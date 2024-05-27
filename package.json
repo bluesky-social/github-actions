@@ -1,0 +1,34 @@
+{
+  "name": "github-actions",
+  "version": "1.0.0",
+  "description": "A collection of GitHub Actions",
+  "main": "index.js",
+  "repository": "https://github.com/bluesky-social/github-actions",
+  "author": "bluesky-social",
+  "license": "MIT",
+  "scripts": {
+    "build": "bash build.sh",
+    "lint": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "@actions/cache": "^3.2.4",
+    "@actions/core": "^1.10.1",
+    "@actions/exec": "^1.1.1",
+    "@actions/github": "^6.0.0",
+    "@actions/io": "^1.1.3",
+    "@actions/tool-cache": "^2.0.1",
+    "@expo/fingerprint": "^0.8.0",
+    "semver": "^7.6.2",
+    "typescript": "^5.4.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.9.0",
+    "@typescript-eslint/parser": "^7.9.0",
+    "@vercel/ncc": "^0.38.1",
+    "eslint": "^8.19.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-simple-import-sort": "^12.1.0",
+    "prettier": "^2.8.8"
+  }
+}
