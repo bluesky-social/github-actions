@@ -95603,8 +95603,8 @@ const run = async () => {
     // Try to restore the DB first
     const step1 = await addToIgnore();
     const step2 = step1 && (await restoreDb());
-    const step3 = step2 && (await getCurrentFP());
-    const step4 = step3 && (await getPrevFP());
+    const step3 = step2 && (await getPrevFP());
+    const step4 = step3 && (await getCurrentFP());
     step4 && (await createDiff());
     await (0, exec_1.exec)(`git checkout ${currentCommit}`);
     return true;
@@ -95635,6 +95635,8 @@ const restoreDb = async () => {
 const getCurrentFP = async () => {
     info.currentCommit = currentCommit;
     console.log('Creating the current fingerprint.');
+    console.log('Installing dependencies...');
+    await (0, exec_1.exec)('yarn install');
     const { stdout } = await (0, exec_1.getExecOutput)(`npx @expo/fingerprint .`);
     info.currentFingerprint = JSON.parse(stdout.trim());
     return true;
@@ -95668,6 +95670,8 @@ const getPrevFP = async () => {
     }
     console.log('Checking out previous commit.');
     await checkoutCommit(info.previousCommit);
+    console.log('Installing dependencies...');
+    await (0, exec_1.exec)('yarn install');
     console.log('Creating the previous fingerprint.');
     const { stdout } = await (0, exec_1.getExecOutput)(`npx @expo/fingerprint .`);
     info.previousFingerprint = JSON.parse(stdout.trim());
