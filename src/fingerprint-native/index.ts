@@ -30,6 +30,7 @@ const profile = getInput('profile') as
   | 'production'
   | 'testflight'
   | 'pull-request'
+const previousCommitTag = getInput('previous-commit-tag')
 const currentCommit = context.sha
 
 let mostRecentTestflightCommit: string | null = null
@@ -59,7 +60,6 @@ const restoreDb = async () => {
   try {
     await stat(testflightBuildsDbPath)
   } catch (e) {
-    console.log('No previous TestFlight build found.')
     return true
   }
 
@@ -76,11 +76,7 @@ const restoreDb = async () => {
 const getCurrentFP = async () => {
   info.currentCommit = currentCommit
 
-  console.log('Checking out current commit.')
   await exec(`git checkout ${currentCommit}`)
-
-  console.log('Creating the current fingerprint.')
-  console.log('Installing dependencies...')
   await exec('yarn install')
 
   const {stdout} = await getExecOutput(`npx @expo/fingerprint .`)
@@ -91,26 +87,18 @@ const getCurrentFP = async () => {
 // Step 4
 const getPrevFP = async () => {
   if (profile === 'pull-request') {
-    console.log('Pull request. Using main branch as previous commit.')
     const {stdout} = await getExecOutput('git rev-parse main')
     info.previousCommit = stdout.trim()
   } else if (profile === 'testflight') {
     if (mostRecentTestflightCommit) {
-      console.log(
-        'TestFlight. Using most recent TestFlight build as previous commit.',
-      )
       info.previousCommit = mostRecentTestflightCommit
     } else {
-      console.log(
-        'TestFlight. No previous TestFlight build found, using main branch as previous commit.',
-      )
       const {stdout} = await getExecOutput('git rev-parse main')
       info.previousCommit = stdout.trim()
     }
   } else if (profile === 'production') {
-    console.log('Production build. Using tag as previous commit.')
     const {stdout, exitCode} = await getExecOutput(
-      `git rev-parse ${getInput('previous-commit-tag')}`,
+      `git rev-parse ${previousCommitTag}`,
     )
     if (exitCode !== 0) {
       setFailed('Tag not found. Aborting.')
@@ -119,14 +107,8 @@ const getPrevFP = async () => {
     info.previousCommit = stdout.trim()
   }
 
-  console.log('Checking out previous commit.')
   await checkoutCommit(info.previousCommit)
-
-  console.log('Installing dependencies...')
   await exec('yarn install')
-
-  console.log('Creating the previous fingerprint.')
-
   const {stdout} = await getExecOutput(`npx @expo/fingerprint .`)
   info.previousFingerprint = JSON.parse(stdout.trim())
   return true
@@ -160,11 +142,12 @@ const createDiff = async () => {
     hasExpoAutolinkingIos
 
   if (includesChanges) {
-    console.log('Changes detected.')
     setOutput('diff', diff)
     setOutput('includes-changes', includesChanges ? 'true' : 'false')
-  } else {
-    console.log('No changes detected.')
+
+    if (profile === 'production') {
+      setFailed('Fingerprint changes detected. Aborting.')
+    }
   }
   return true
 }
