@@ -42,7 +42,6 @@ const run = async () => {
   const step4 = step3 && (await getCurrentFP())
   step4 && (await createDiff())
 
-  await exec(`git checkout ${currentCommit}`)
   return true
 }
 
@@ -77,8 +76,10 @@ const restoreDb = async () => {
 const getCurrentFP = async () => {
   info.currentCommit = currentCommit
 
-  console.log('Creating the current fingerprint.')
+  console.log('Checking out current commit.')
+  await exec(`git checkout ${currentCommit}`)
 
+  console.log('Creating the current fingerprint.')
   console.log('Installing dependencies...')
   await exec('yarn install')
 

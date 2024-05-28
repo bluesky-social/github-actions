@@ -95606,7 +95606,6 @@ const run = async () => {
     const step3 = step2 && (await getPrevFP());
     const step4 = step3 && (await getCurrentFP());
     step4 && (await createDiff());
-    await (0, exec_1.exec)(`git checkout ${currentCommit}`);
     return true;
 };
 // Step 1
@@ -95634,6 +95633,8 @@ const restoreDb = async () => {
 // Step 3
 const getCurrentFP = async () => {
     info.currentCommit = currentCommit;
+    console.log('Checking out current commit.');
+    await (0, exec_1.exec)(`git checkout ${currentCommit}`);
     console.log('Creating the current fingerprint.');
     console.log('Installing dependencies...');
     await (0, exec_1.exec)('yarn install');
