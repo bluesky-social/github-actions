@@ -76,10 +76,12 @@ const restoreDb = async () => {
 const getCurrentFP = async () => {
   info.currentCommit = currentCommit
 
-  await exec(`git checkout ${currentCommit}`)
+  await checkoutCommit(currentCommit)
   await exec('yarn install')
+  await exec('yarn add bluesky-social/react-native-bottom-sheet')
 
   const {stdout} = await getExecOutput(`npx @expo/fingerprint .`)
+
   info.currentFingerprint = JSON.parse(stdout.trim())
   return true
 }
@@ -88,28 +90,36 @@ const getCurrentFP = async () => {
 const getPrevFP = async () => {
   if (profile === 'pull-request') {
     const {stdout} = await getExecOutput('git rev-parse main')
+
     info.previousCommit = stdout.trim()
   } else if (profile === 'testflight') {
     if (mostRecentTestflightCommit) {
       info.previousCommit = mostRecentTestflightCommit
     } else {
-      const {stdout} = await getExecOutput('git rev-parse main')
+      const {stdout: lastTag} = await getExecOutput(
+        'git describe --tags --abbrev=0',
+      )
+      const {stdout} = await getExecOutput(`git rev-parse ${lastTag}`)
       info.previousCommit = stdout.trim()
     }
   } else if (profile === 'production') {
     const {stdout, exitCode} = await getExecOutput(
       `git rev-parse ${previousCommitTag}`,
     )
+
     if (exitCode !== 0) {
       setFailed('Tag not found. Aborting.')
       return false
     }
+
     info.previousCommit = stdout.trim()
   }
 
   await checkoutCommit(info.previousCommit)
   await exec('yarn install')
+
   const {stdout} = await getExecOutput(`npx @expo/fingerprint .`)
+
   info.previousFingerprint = JSON.parse(stdout.trim())
   return true
 }

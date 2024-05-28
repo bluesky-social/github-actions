@@ -95597,6 +95597,7 @@ let info = {
 const workingDir = '/home/runner/work/social-app/social-app';
 const testflightBuildsDbPath = path.join(workingDir, 'most-recent-testflight-commit.txt');
 const profile = (0, core_1.getInput)('profile');
+const previousCommitTag = (0, core_1.getInput)('previous-commit-tag');
 const currentCommit = github_1.context.sha;
 let mostRecentTestflightCommit = null;
 const run = async () => {
@@ -95621,7 +95622,6 @@ const restoreDb = async () => {
         await stat(testflightBuildsDbPath);
     }
     catch (e) {
-        console.log('No previous TestFlight build found.');
         return true;
     }
     const commit = await readFile(testflightBuildsDbPath, 'utf8');
@@ -95633,11 +95633,9 @@ const restoreDb = async () => {
 // Step 3
 const getCurrentFP = async () => {
     info.currentCommit = currentCommit;
-    console.log('Checking out current commit.');
-    await (0, exec_1.exec)(`git checkout ${currentCommit}`);
-    console.log('Creating the current fingerprint.');
-    console.log('Installing dependencies...');
+    await checkoutCommit(currentCommit);
     await (0, exec_1.exec)('yarn install');
+    await (0, exec_1.exec)('yarn add bluesky-social/react-native-bottom-sheet');
     const { stdout } = await (0, exec_1.getExecOutput)(`npx @expo/fingerprint .`);
     info.currentFingerprint = JSON.parse(stdout.trim());
     return true;
@@ -95645,35 +95643,29 @@ const getCurrentFP = async () => {
 // Step 4
 const getPrevFP = async () => {
     if (profile === 'pull-request') {
-        console.log('Pull request. Using main branch as previous commit.');
         const { stdout } = await (0, exec_1.getExecOutput)('git rev-parse main');
         info.previousCommit = stdout.trim();
     }
     else if (profile === 'testflight') {
         if (mostRecentTestflightCommit) {
-            console.log('TestFlight. Using most recent TestFlight build as previous commit.');
             info.previousCommit = mostRecentTestflightCommit;
         }
         else {
-            console.log('TestFlight. No previous TestFlight build found, using main branch as previous commit.');
-            const { stdout } = await (0, exec_1.getExecOutput)('git rev-parse main');
+            const { stdout: lastTag } = await (0, exec_1.getExecOutput)('git describe --tags --abbrev=0');
+            const { stdout } = await (0, exec_1.getExecOutput)(`git rev-parse ${lastTag}`);
             info.previousCommit = stdout.trim();
         }
     }
     else if (profile === 'production') {
-        console.log('Production build. Using tag as previous commit.');
-        const { stdout, exitCode } = await (0, exec_1.getExecOutput)(`git rev-parse ${(0, core_1.getInput)('previous-commit-tag')}`);
+        const { stdout, exitCode } = await (0, exec_1.getExecOutput)(`git rev-parse ${previousCommitTag}`);
         if (exitCode !== 0) {
             (0, core_1.setFailed)('Tag not found. Aborting.');
             return false;
         }
         info.previousCommit = stdout.trim();
     }
-    console.log('Checking out previous commit.');
     await checkoutCommit(info.previousCommit);
-    console.log('Installing dependencies...');
     await (0, exec_1.exec)('yarn install');
-    console.log('Creating the previous fingerprint.');
     const { stdout } = await (0, exec_1.getExecOutput)(`npx @expo/fingerprint .`);
     info.previousFingerprint = JSON.parse(stdout.trim());
     return true;
@@ -95692,12 +95684,11 @@ const createDiff = async () => {
         hasExpoAutolinkingAndroid ||
         hasExpoAutolinkingIos;
     if (includesChanges) {
-        console.log('Changes detected.');
         (0, core_1.setOutput)('diff', diff);
         (0, core_1.setOutput)('includes-changes', includesChanges ? 'true' : 'false');
-    }
-    else {
-        console.log('No changes detected.');
+        if (profile === 'production') {
+            (0, core_1.setFailed)('Fingerprint changes detected. Aborting.');
+        }
     }
     return true;
 };
