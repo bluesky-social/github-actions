@@ -95580,9 +95580,8 @@ var __webpack_exports__ = {};
 var exports = __webpack_exports__;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const core_1 = __nccwpck_require__(2186);
-const path = __nccwpck_require__(1017);
 const cache_1 = __nccwpck_require__(7799);
+const core_1 = __nccwpck_require__(2186);
 const exec_1 = __nccwpck_require__(1514);
 const github_1 = __nccwpck_require__(5438);
 const fingerprint_1 = __nccwpck_require__(3596);
@@ -95594,8 +95593,6 @@ let info = {
     currentFingerprint: undefined,
     previousFingerprint: undefined,
 };
-const workingDir = '/home/runner/work/social-app/social-app';
-const testflightBuildsDbPath = path.join(workingDir, 'most-recent-testflight-commit.txt');
 const profile = (0, core_1.getInput)('profile');
 const previousCommitTag = (0, core_1.getInput)('previous-commit-tag');
 const currentCommit = github_1.context.sha;
@@ -95616,15 +95613,16 @@ const addToIgnore = async () => {
 };
 // Step 2
 const restoreDb = async () => {
-    await (0, cache_1.restoreCache)([testflightBuildsDbPath], `most-recent-testflight-commit`);
+    const restoreRes = await (0, cache_1.restoreCache)(['most-recent-testflight-commit.txt'], `most-recent-testflight-commit`);
+    await (0, exec_1.exec)(`cat most-recent-testflight-commit.txt`);
     // See if the file exists
     try {
-        await stat(testflightBuildsDbPath);
+        await stat('most-recent-testflight-commit.txt');
     }
     catch (e) {
         return true;
     }
-    const commit = await readFile(testflightBuildsDbPath, 'utf8');
+    const commit = await readFile('most-recent-testflight-commit.txt', 'utf8');
     if (commit && commit.trim().length > 0) {
         mostRecentTestflightCommit = commit.trim();
     }

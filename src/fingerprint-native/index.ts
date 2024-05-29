@@ -1,6 +1,5 @@
-import {getInput, setFailed, setOutput} from '@actions/core'
-import path = require('path')
 import {restoreCache} from '@actions/cache'
+import {getInput, setFailed, setOutput} from '@actions/core'
 import {exec, getExecOutput} from '@actions/exec'
 import {context} from '@actions/github'
 import {diffFingerprints, Fingerprint} from '@expo/fingerprint'
@@ -21,11 +20,6 @@ let info: Info = {
   previousFingerprint: undefined,
 }
 
-const workingDir = '/home/runner/work/social-app/social-app'
-const testflightBuildsDbPath = path.join(
-  workingDir,
-  'most-recent-testflight-commit.txt',
-)
 const profile = getInput('profile') as
   | 'production'
   | 'testflight'
@@ -54,16 +48,21 @@ const addToIgnore = async () => {
 
 // Step 2
 const restoreDb = async () => {
-  await restoreCache([testflightBuildsDbPath], `most-recent-testflight-commit`)
+  const restoreRes = await restoreCache(
+    ['most-recent-testflight-commit.txt'],
+    `most-recent-testflight-commit`,
+  )
+
+  await exec(`cat most-recent-testflight-commit.txt`)
 
   // See if the file exists
   try {
-    await stat(testflightBuildsDbPath)
+    await stat('most-recent-testflight-commit.txt')
   } catch (e) {
     return true
   }
 
-  const commit = await readFile(testflightBuildsDbPath, 'utf8')
+  const commit = await readFile('most-recent-testflight-commit.txt', 'utf8')
 
   if (commit && commit.trim().length > 0) {
     mostRecentTestflightCommit = commit.trim()
