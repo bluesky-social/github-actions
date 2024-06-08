@@ -95631,6 +95631,7 @@ const restoreDb = async () => {
 const getCurrentFP = async () => {
     info.currentCommit = currentCommit;
     await checkoutCommit(currentCommit);
+    await (0, exec_1.exec)('rm -rf node_modules');
     await (0, exec_1.exec)('yarn install');
     await (0, exec_1.exec)('yarn add bluesky-social/react-native-bottom-sheet');
     const { stdout } = await (0, exec_1.getExecOutput)(`npx @expo/fingerprint .`);

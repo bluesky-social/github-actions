@@ -74,6 +74,7 @@ const getCurrentFP = async () => {
   info.currentCommit = currentCommit
 
   await checkoutCommit(currentCommit)
+  await exec('rm -rf node_modules')
   await exec('yarn install')
   await exec('yarn add bluesky-social/react-native-bottom-sheet')
 
