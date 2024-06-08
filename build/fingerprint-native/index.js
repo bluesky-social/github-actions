@@ -95614,7 +95614,6 @@ const addToIgnore = async () => {
 // Step 2
 const restoreDb = async () => {
     const restoreRes = await (0, cache_1.restoreCache)(['most-recent-testflight-commit.txt'], `most-recent-testflight-commit`);
-    await (0, exec_1.exec)(`cat most-recent-testflight-commit.txt`);
     // See if the file exists
     try {
         await stat('most-recent-testflight-commit.txt');

@@ -53,8 +53,6 @@ const restoreDb = async () => {
     `most-recent-testflight-commit`,
   )
 
-  await exec(`cat most-recent-testflight-commit.txt`)
-
   // See if the file exists
   try {
     await stat('most-recent-testflight-commit.txt')
