@@ -93,10 +93,10 @@ const getPrevFP = async () => {
     if (mostRecentTestflightCommit) {
       info.previousCommit = mostRecentTestflightCommit
     } else {
-      const {stdout: lastTag} = await getExecOutput(
-        'git describe --tags --abbrev=0',
-      )
-      const {stdout} = await getExecOutput(`git rev-parse ${lastTag}`)
+      // const {stdout: lastTag} = await getExecOutput(
+      //   'git describe --tags --abbrev=0',
+      // )
+      const {stdout} = await getExecOutput(`git rev-parse @~`)
       info.previousCommit = stdout.trim()
     }
   } else if (profile === 'production') {
