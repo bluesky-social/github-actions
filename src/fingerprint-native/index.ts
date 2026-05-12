@@ -7,6 +7,45 @@ import {promises} from 'fs'
 
 const {readFile, stat} = promises
 
+type PackageManager = 'yarn' | 'pnpm' | 'npm'
+
+const detectPackageManager = async (): Promise<PackageManager> => {
+  try {
+    const pkg = JSON.parse(await readFile('package.json', 'utf8'))
+    const field: string | undefined = pkg.packageManager
+    if (field?.startsWith('pnpm@')) return 'pnpm'
+    if (field?.startsWith('npm@')) return 'npm'
+    if (field?.startsWith('yarn@')) return 'yarn'
+  } catch {
+    // fall through
+  }
+  // Fall back to lockfile presence
+  try {
+    await stat('pnpm-lock.yaml')
+    return 'pnpm'
+  } catch {
+    // fall through
+  }
+  try {
+    await stat('package-lock.json')
+    return 'npm'
+  } catch {
+    // fall through
+  }
+  return 'yarn'
+}
+
+const runInstall = async (pm: PackageManager) => {
+  if (pm === 'pnpm') {
+    await exec('corepack enable')
+    await exec('pnpm install --frozen-lockfile')
+  } else if (pm === 'npm') {
+    await exec('npm ci')
+  } else {
+    await exec('yarn install')
+  }
+}
+
 type Info = {
   currentCommit?: string
   previousCommit?: string
@@ -75,8 +114,8 @@ const getCurrentFP = async () => {
 
   await checkoutCommit(currentCommit)
   await exec('rm -rf node_modules')
-  await exec('yarn install')
-  await exec('yarn add bluesky-social/react-native-bottom-sheet')
+  const pm = await detectPackageManager()
+  await runInstall(pm)
 
   const {stdout} = await getExecOutput(`npx @expo/fingerprint .`)
 
@@ -114,7 +153,8 @@ const getPrevFP = async () => {
   }
 
   await checkoutCommit(info.previousCommit)
-  await exec('yarn install')
+  const pm = await detectPackageManager()
+  await runInstall(pm)
 
   const {stdout} = await getExecOutput(`npx @expo/fingerprint .`)
 
