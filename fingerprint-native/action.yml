@@ -3,7 +3,7 @@ name: Fingerprint Native Changes
 author: bluesky-social
 description: Debug the fingerprint of two separate commits for OTA-breaking changes
 runs:
-  using: node20
+  using: node24
   main: ../build/fingerprint-native/index.js
 inputs:
   profile:
