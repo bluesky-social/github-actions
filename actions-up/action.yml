@@ -35,8 +35,11 @@ runs:
     - name: Generate report
       id: report
       shell: bash
+      env:
+        REPORT_JSON: ${{ runner.temp }}/actions-up-report.json
+        REPORT_MD: ${{ runner.temp }}/actions-up-report.md
       run: |
-        npx -y actions-up@latest --json > actions-up-report.json
+        npx -y actions-up@latest --json > "$REPORT_JSON"
         node "${GITHUB_ACTION_PATH}/build-report.mjs"
 
     - name: Apply updates
@@ -52,8 +55,5 @@ runs:
         delete-branch: true
         commit-message: ${{ inputs.commit-message }}
         title: ${{ inputs.commit-message }}
-        body-path: actions-up-report.md
+        body-path: ${{ runner.temp }}/actions-up-report.md
         labels: ${{ inputs.labels }}
-        add-paths: |
-          **/*.yml
-          **/*.yaml
