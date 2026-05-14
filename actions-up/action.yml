@@ -1,0 +1,59 @@
+---
+name: actions-up
+author: bluesky-social
+description: Run actions-up to bump pinned GitHub Actions versions and open a PR with the changes
+inputs:
+  token:
+    description: Token used to push the branch and open the PR. Pass a PAT or App token if you want CI workflows to run on the resulting PR (the default GITHUB_TOKEN does not trigger them).
+    required: false
+    default: ${{ github.token }}
+  branch:
+    description: Branch name used for the update PR
+    required: false
+    default: ci/actions-up
+  commit-message:
+    description: Commit message (also used as the PR title)
+    required: false
+    default: 'chore: bump pinned GitHub Actions versions'
+  labels:
+    description: Comma-separated list of labels to apply to the PR
+    required: false
+    default: dependencies
+  node-version:
+    description: Node.js version used to run actions-up
+    required: false
+    default: '24'
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Generate report
+      id: report
+      shell: bash
+      run: |
+        npx -y actions-up@latest --json > actions-up-report.json
+        node "${GITHUB_ACTION_PATH}/build-report.mjs"
+
+    - name: Apply updates
+      if: steps.report.outputs.has-updates == 'true'
+      shell: bash
+      run: npx -y actions-up@latest --yes
+
+    - uses: peter-evans/create-pull-request@v7
+      if: steps.report.outputs.has-updates == 'true'
+      with:
+        token: ${{ inputs.token }}
+        branch: ${{ inputs.branch }}
+        delete-branch: true
+        commit-message: ${{ inputs.commit-message }}
+        title: ${{ inputs.commit-message }}
+        body-path: actions-up-report.md
+        labels: ${{ inputs.labels }}
+        add-paths: |
+          **/*.yml
+          **/*.yaml
