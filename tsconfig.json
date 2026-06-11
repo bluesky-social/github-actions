@@ -2,13 +2,13 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "module": "CommonJS",
-    "moduleResolution": "node",
     "types": ["node"],
     "paths": {
       "#fingerprint-native/*": ["./src/fingerprint-native*"],
       "#fingerprint-native-post/*": ["./src/fingerprint-native-post*"]
     },
-    "outDir": "./build",
+    "rootDir": "./src/fingerprint-native",
+    "outDir": "./build"
   },
   "exclude": ["build", "node_modules"]
 }
