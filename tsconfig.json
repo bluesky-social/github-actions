@@ -2,6 +2,7 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "module": "CommonJS",
+    "skipLibCheck": true,
     "types": ["node"],
     "paths": {
       "#fingerprint-native/*": ["./src/fingerprint-native*"],
