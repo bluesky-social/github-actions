@@ -48,7 +48,7 @@ const detectPackageManager = async (): Promise<PackageManager> => {
 
 const runInstall = async (pm: PackageManager) => {
   if (pm === 'pnpm') {
-    await exec('npm install -g pnpm@11.5.3') // > 10.21.0 will defer to `packageMananger` version.
+    await exec('npm install -g pnpm@11.5.3') // > 10.21.0 will defer to `packageManager` version.
     await exec('pnpm install --frozen-lockfile')
   } else if (pm === 'npm') {
     await exec('npm ci')
