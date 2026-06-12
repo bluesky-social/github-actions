@@ -12,7 +12,7 @@ type PackageManager = 'yarn' | 'pnpm' | 'npm'
 const packageManagerName = (field: unknown): string | undefined => {
   if (typeof field === 'string') return field
   if (Array.isArray(field)) return packageManagerName(field[0])
-  if (typeof field === 'object' && field !== null) {
+  if (typeof field === 'object' && field != null) {
     return (field as {name?: string}).name
   }
   return undefined
