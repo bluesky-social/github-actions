@@ -9,16 +9,21 @@ const {readFile, stat} = promises
 
 type PackageManager = 'yarn' | 'pnpm' | 'npm'
 
+const packageManagerName = (field: unknown): string | undefined => {
+  if (typeof field === 'string') return field
+  if (Array.isArray(field)) return packageManagerName(field[0])
+  if (typeof field === 'object' && field !== null) {
+    return (field as {name?: string}).name
+  }
+  return undefined
+}
+
 const detectPackageManager = async (): Promise<PackageManager> => {
   try {
     const pkg = JSON.parse(await readFile('package.json', 'utf8'))
-    const field: unknown = pkg.packageManager
     const name =
-      typeof field === 'string'
-        ? field
-        : typeof field === 'object' && field !== null
-        ? (field as {name?: string}).name
-        : undefined
+      packageManagerName(pkg.packageManager) ??
+      packageManagerName(pkg.devEngines?.packageManager)
     if (name?.startsWith('pnpm')) return 'pnpm'
     if (name?.startsWith('npm')) return 'npm'
     if (name?.startsWith('yarn')) return 'yarn'
