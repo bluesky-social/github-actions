@@ -9,13 +9,24 @@ const {readFile, stat} = promises
 
 type PackageManager = 'yarn' | 'pnpm' | 'npm'
 
+const packageManagerName = (field: unknown): string | undefined => {
+  if (typeof field === 'string') return field
+  if (Array.isArray(field)) return packageManagerName(field[0])
+  if (typeof field === 'object' && field != null) {
+    return (field as {name?: string}).name
+  }
+  return undefined
+}
+
 const detectPackageManager = async (): Promise<PackageManager> => {
   try {
     const pkg = JSON.parse(await readFile('package.json', 'utf8'))
-    const field: string | undefined = pkg.packageManager
-    if (field?.startsWith('pnpm@')) return 'pnpm'
-    if (field?.startsWith('npm@')) return 'npm'
-    if (field?.startsWith('yarn@')) return 'yarn'
+    const name =
+      packageManagerName(pkg.packageManager) ??
+      packageManagerName(pkg.devEngines?.packageManager)
+    if (name?.startsWith('pnpm')) return 'pnpm'
+    if (name?.startsWith('npm')) return 'npm'
+    if (name?.startsWith('yarn')) return 'yarn'
   } catch {
     // fall through
   }
@@ -37,13 +48,18 @@ const detectPackageManager = async (): Promise<PackageManager> => {
 
 const runInstall = async (pm: PackageManager) => {
   if (pm === 'pnpm') {
-    await exec('corepack enable')
+    await exec('npm install -g pnpm@11.5.3') // > 10.21.0 will defer to `packageManager` version.
     await exec('pnpm install --frozen-lockfile')
   } else if (pm === 'npm') {
     await exec('npm ci')
   } else {
-    await exec('yarn install')
+    await exec('yarn install --frozen-lockfile')
   }
+}
+
+const fingerprintCommand = (pm: PackageManager): string => {
+  if (pm === 'pnpm') return 'pnpm dlx @expo/fingerprint .'
+  return 'npx @expo/fingerprint .'
 }
 
 type Info = {
@@ -152,11 +168,15 @@ const getPrevFP = async () => {
     info.previousCommit = stdout.trim()
   }
 
+  if (!info.previousCommit) {
+    setFailed('Previous commit not found. Aborting.')
+    return false
+  }
   await checkoutCommit(info.previousCommit)
   const pm = await detectPackageManager()
   await runInstall(pm)
 
-  const {stdout} = await getExecOutput(`npx @expo/fingerprint .`)
+  const {stdout} = await getExecOutput(fingerprintCommand(pm))
 
   info.previousFingerprint = JSON.parse(stdout.trim())
   return true
