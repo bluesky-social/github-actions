@@ -28,6 +28,13 @@ const AUTOLINKING_REASONS = [
  * removing a native module (not just editing one) changes the result. Sorting
  * makes the hash order-independent.
  *
+ * Entries are JSON-encoded as [key, hash] tuples rather than joined with
+ * delimiters: a source path can itself contain any delimiter char, so a
+ * delimiter-joined preimage would not be injective (two different source sets
+ * could serialize identically and collide). JSON keeps entry and field
+ * boundaries unambiguous, which matters because this hash gates the
+ * OTA-vs-native-rebuild decision.
+ *
  * This lets a caller persist a single 40-char hash - well under the 48 KB
  * Actions-variable limit that the full ~140 KB fingerprint would blow past - and
  * lets this action skip recomputing the baseline commit's fingerprint entirely.
@@ -35,9 +42,9 @@ const AUTOLINKING_REASONS = [
 const nativeHash = (fp: Fingerprint): string => {
   const parts = fp.sources
     .filter(s => s.reasons.some(r => AUTOLINKING_REASONS.includes(r as string)))
-    .map(s => `${'filePath' in s ? s.filePath : s.id}:${s.hash}`)
-    .sort()
-  return createHash('sha1').update(parts.join('|')).digest('hex')
+    .map(s => [('filePath' in s ? s.filePath : s.id) ?? '', s.hash] as const)
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+  return createHash('sha1').update(JSON.stringify(parts)).digest('hex')
 }
 
 const {readFile, stat} = promises
@@ -225,6 +232,14 @@ const getPrevFP = async (): Promise<boolean> => {
     return false
   }
   await checkoutCommit(info.previousCommit)
+  /*
+   * getCurrentFP already installed the current commit's dependencies into
+   * node_modules, and `git checkout` leaves that (gitignored) directory in
+   * place. Remove it before reinstalling so the baseline fingerprint is
+   * computed against the baseline's dependency tree, not a mix - a stale
+   * native module left behind could otherwise hide a real native change.
+   */
+  await exec('rm -rf node_modules')
   const pm = await detectPackageManager()
   await runInstall(pm)
 
