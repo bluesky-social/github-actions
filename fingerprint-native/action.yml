@@ -12,8 +12,26 @@ inputs:
   previous-commit-tag:
     description: Tag for getting the second commit to debug against.
     required: false
+  baseline-native-hash:
+    description: >-
+      For the `testflight` profile: the native-autolinking hash of the last
+      commit deployed to testflight (see the `current-native-hash` output).
+      Intended to be sourced from a repo variable the caller advances after each
+      successful deploy. When provided, the action compares the current commit's
+      native hash against it directly and skips checking out and reinstalling the
+      baseline commit. When omitted (e.g. before the variable is first seeded),
+      the action falls back to the legacy cached `most-recent-testflight-commit`
+      baseline. Ignored for the `production` and `pull-request` profiles.
+    required: false
 outputs:
   includes-changes:
     description: Whether there are changes that prevent the commit from being properly deployed with the current client.
   diff:
-    description: The diff between the two commits.
+    description: >-
+      The diff between the two commits. Only set on the slow path (production,
+      pull-request, or the testflight cache fallback); empty when the fast
+      native-hash comparison is used.
+  current-native-hash:
+    description: >-
+      The native-autolinking hash of the current commit. Persist this as the
+      baseline for the next testflight run after a successful deploy.
