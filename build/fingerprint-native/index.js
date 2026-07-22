@@ -125818,6 +125818,16 @@ const getPrevFP = async () => {
     await runInstall(pm);
     const { stdout } = await (0, exec_1.getExecOutput)(fingerprintCommand(pm));
     info.previousFingerprint = JSON.parse(stdout.trim());
+    /*
+     * getPrevFP checks out and installs the baseline commit's dependency tree to
+     * fingerprint it. Restore the current commit and its deps before returning so
+     * any consumer step running after this action (e.g. the bundle export) operates
+     * on context.sha, not the baseline commit.
+     */
+    await checkoutCommit(currentCommit);
+    await (0, exec_1.exec)('rm -rf node_modules');
+    const currentPm = await detectPackageManager();
+    await runInstall(currentPm);
     return true;
 };
 // Step 4
