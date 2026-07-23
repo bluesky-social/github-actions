@@ -1,10 +1,9 @@
-import {restoreCache} from '@actions/cache'
 import {getInput, setFailed, setOutput} from '@actions/core'
 import {exec, getExecOutput} from '@actions/exec'
 import {context} from '@actions/github'
 import {diffFingerprints, Fingerprint} from '@expo/fingerprint'
-import {createHash} from 'crypto'
 import {promises} from 'fs'
+import {join} from 'path'
 
 /*
  * Fingerprint sources are flagged with one or more "reasons" describing why they
@@ -18,36 +17,7 @@ const AUTOLINKING_REASONS = [
   'expoAutolinkingIos',
 ]
 
-/*
- * Derive a stable hash over only the native-autolinking-relevant sources of a
- * fingerprint. Two commits with the same native-hash share an identical native
- * surface, so an OTA update between them is safe; a different hash means a
- * rebuild is required.
- *
- * The filePath/id is folded in alongside each source hash so that adding or
- * removing a native module (not just editing one) changes the result. Sorting
- * makes the hash order-independent.
- *
- * Entries are JSON-encoded as [key, hash] tuples rather than joined with
- * delimiters: a source path can itself contain any delimiter char, so a
- * delimiter-joined preimage would not be injective (two different source sets
- * could serialize identically and collide). JSON keeps entry and field
- * boundaries unambiguous, which matters because this hash gates the
- * OTA-vs-native-rebuild decision.
- *
- * This lets a caller persist a single 40-char hash - well under the 48 KB
- * Actions-variable limit that the full ~140 KB fingerprint would blow past - and
- * lets this action skip recomputing the baseline commit's fingerprint entirely.
- */
-const nativeHash = (fp: Fingerprint): string => {
-  const parts = fp.sources
-    .filter(s => s.reasons.some(r => AUTOLINKING_REASONS.includes(r as string)))
-    .map(s => [('filePath' in s ? s.filePath : s.id) ?? '', s.hash] as const)
-    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-  return createHash('sha1').update(JSON.stringify(parts)).digest('hex')
-}
-
-const {readFile, stat} = promises
+const {readFile, stat, writeFile} = promises
 
 type PackageManager = 'yarn' | 'pnpm' | 'npm'
 
@@ -122,66 +92,20 @@ const profile = getInput('profile') as
   | 'testflight'
   | 'pull-request'
 const previousCommitTag = getInput('previous-commit-tag')
-/*
- * The native-hash (see nativeHash) of the last commit successfully deployed to
- * testflight, sourced from a repo variable the caller advances after each deploy.
- * When present, the testflight path diffs against this hash directly and skips
- * checking out and reinstalling the baseline commit entirely. Empty on the first
- * run (before the variable is seeded), in which case we fall back to the legacy
- * cache-based baseline commit.
- */
-const baselineNativeHash = getInput('baseline-native-hash').trim()
+const baselineFingerprintPath = getInput('baseline-fingerprint-path').trim()
+const currentFingerprintPath = join(
+  process.env.RUNNER_TEMP ?? '.',
+  'native-fingerprint.json',
+)
 const currentCommit = context.sha
 
-let mostRecentTestflightCommit: string | null = null
-
 const run = async () => {
-  const step1 = await addToIgnore()
-  const step2 = step1 && (await restoreDb())
-  const step3 = step2 && (await getCurrentFP())
-  step3 && (await createDiff())
+  const hasCurrentFingerprint = await getCurrentFP()
+  hasCurrentFingerprint && (await createDiff())
 
   return true
 }
 
-// Step 1
-const addToIgnore = async () => {
-  await exec('echo "most-recent-testflight-commit.txt" >> .gitignore')
-  return true
-}
-
-/*
- * Step 2: restore the legacy cache-based baseline commit. Only used as a fallback
- * for the testflight profile when no baseline-native-hash input is provided (e.g.
- * the very first run before the repo variable is seeded). Skipped otherwise.
- */
-const restoreDb = async () => {
-  if (profile !== 'testflight' || baselineNativeHash) {
-    return true
-  }
-
-  await restoreCache(
-    ['most-recent-testflight-commit.txt'],
-    `most-recent-testflight-commit`,
-  )
-
-  // See if the file exists
-  try {
-    await stat('most-recent-testflight-commit.txt')
-  } catch (e) {
-    return true
-  }
-
-  const commit = await readFile('most-recent-testflight-commit.txt', 'utf8')
-
-  if (commit && commit.trim().length > 0) {
-    mostRecentTestflightCommit = commit.trim()
-  }
-
-  return true
-}
-
-// Step 3
 const getCurrentFP = async () => {
   info.currentCommit = currentCommit
 
@@ -193,27 +117,25 @@ const getCurrentFP = async () => {
   const {stdout} = await getExecOutput(fingerprintCommand(pm))
 
   info.currentFingerprint = JSON.parse(stdout.trim())
+  await writeFile(
+    currentFingerprintPath,
+    JSON.stringify(info.currentFingerprint),
+    'utf8',
+  )
+  setOutput('current-fingerprint-path', currentFingerprintPath)
   return true
 }
 
 /*
  * Compute the previous fingerprint by checking out the baseline commit and
- * recomputing it. Used for the pull-request and production profiles, and for
- * testflight only when falling back to the legacy cache baseline (no
- * baseline-native-hash provided).
+ * recomputing it. Used for the pull-request and production profiles; testflight
+ * reads its deployed baseline directly from an artifact.
  */
 const getPrevFP = async (): Promise<boolean> => {
   if (profile === 'pull-request') {
     const {stdout} = await getExecOutput('git rev-parse main')
 
     info.previousCommit = stdout.trim()
-  } else if (profile === 'testflight') {
-    if (mostRecentTestflightCommit) {
-      info.previousCommit = mostRecentTestflightCommit
-    } else {
-      const {stdout} = await getExecOutput(`git rev-parse @~`)
-      info.previousCommit = stdout.trim()
-    }
   } else if (profile === 'production') {
     const {stdout, exitCode} = await getExecOutput(
       `git rev-parse ${previousCommitTag}`,
@@ -268,27 +190,33 @@ const createDiff = async () => {
   }
 
   /*
-   * Fast path: when the caller supplies the baseline's native-hash we don't need
-   * the previous fingerprint at all - comparing the current commit's native-hash
-   * to the stored one tells us whether the native surface changed. This is the
-   * whole point of the hash-based baseline: no baseline checkout or reinstall.
+   * Without a known deployed baseline, an OTA update cannot be proven safe.
+   * Force native builds; their successful completion will seed the artifact.
    */
-  if (profile === 'testflight' && baselineNativeHash) {
-    const currentNativeHash = nativeHash(info.currentFingerprint)
-    const includesChanges = currentNativeHash !== baselineNativeHash
-
-    console.log(`Baseline native-hash: ${baselineNativeHash}`)
-    console.log(`Current native-hash:  ${currentNativeHash}`)
-
-    setOutput('current-native-hash', currentNativeHash)
-    if (includesChanges) {
-      setOutput('includes-changes', 'true')
-    }
+  if (profile === 'testflight' && !baselineFingerprintPath) {
+    setOutput('includes-changes', 'true')
     return true
   }
 
-  // Slow path: recompute the baseline fingerprint and produce a full diff.
-  if (!(await getPrevFP()) || !info.previousFingerprint) {
+  /*
+   * Fast path: an artifact gives us the full previous fingerprint directly, so
+   * testflight does not need to check out or install the baseline commit.
+   */
+  if (profile === 'testflight' && baselineFingerprintPath) {
+    try {
+      info.previousFingerprint = JSON.parse(
+        await readFile(baselineFingerprintPath, 'utf8'),
+      )
+    } catch {
+      setFailed('Could not read the baseline fingerprint. Aborting.')
+      return false
+    }
+  }
+
+  if (
+    !info.previousFingerprint &&
+    (!(await getPrevFP()) || !info.previousFingerprint)
+  ) {
     setFailed('Previous fingerprint not found. Aborting.')
     return false
   }
@@ -301,10 +229,6 @@ const createDiff = async () => {
   const includesChanges = diff.some(s =>
     s.reasons.some(r => AUTOLINKING_REASONS.includes(r)),
   )
-
-  // Expose the current native-hash so testflight callers can persist it as the
-  // new baseline after a successful deploy, even on the legacy fallback path.
-  setOutput('current-native-hash', nativeHash(info.currentFingerprint))
 
   if (includesChanges) {
     setOutput('diff', diff)
