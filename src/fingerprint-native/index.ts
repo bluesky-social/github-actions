@@ -1,7 +1,7 @@
 import {getInput, setFailed, setOutput} from '@actions/core'
 import {exec, getExecOutput} from '@actions/exec'
 import {context} from '@actions/github'
-import {diffFingerprints, Fingerprint} from '@expo/fingerprint'
+import {Fingerprint, FingerprintSource} from '@expo/fingerprint'
 import {promises} from 'fs'
 import {join} from 'path'
 
@@ -100,8 +100,26 @@ const currentFingerprintPath = join(
 const currentCommit = context.sha
 
 const run = async () => {
+  const hasBaselineFingerprint = await getBaselineFP()
+  if (!hasBaselineFingerprint) return false
+
   const hasCurrentFingerprint = await getCurrentFP()
   hasCurrentFingerprint && (await createDiff())
+
+  return true
+}
+
+const getBaselineFP = async (): Promise<boolean> => {
+  if (profile !== 'testflight' || !baselineFingerprintPath) return true
+
+  try {
+    info.previousFingerprint = JSON.parse(
+      await readFile(baselineFingerprintPath, 'utf8'),
+    )
+  } catch {
+    setFailed('Could not read the baseline fingerprint. Aborting.')
+    return false
+  }
 
   return true
 }
@@ -198,21 +216,6 @@ const createDiff = async () => {
     return true
   }
 
-  /*
-   * Fast path: an artifact gives us the full previous fingerprint directly, so
-   * testflight does not need to check out or install the baseline commit.
-   */
-  if (profile === 'testflight' && baselineFingerprintPath) {
-    try {
-      info.previousFingerprint = JSON.parse(
-        await readFile(baselineFingerprintPath, 'utf8'),
-      )
-    } catch {
-      setFailed('Could not read the baseline fingerprint. Aborting.')
-      return false
-    }
-  }
-
   if (
     !info.previousFingerprint &&
     (!(await getPrevFP()) || !info.previousFingerprint)
@@ -221,14 +224,19 @@ const createDiff = async () => {
     return false
   }
 
-  /*
-   * diffFingerprints is directional: it returns sources from its second
-   * argument that are absent from its first. Check both directions so adding or
-   * removing a native source requires a rebuild.
-   */
+  const changedSources = (before: Fingerprint, after: Fingerprint) =>
+    after.sources.filter(afterSource => {
+      const beforeSource = before.sources.find(
+        source =>
+          source.type === afterSource.type &&
+          sourceId(source) === sourceId(afterSource),
+      )
+      return !beforeSource || beforeSource.hash !== afterSource.hash
+    })
+
   const diff = [
-    ...diffFingerprints(info.previousFingerprint, info.currentFingerprint),
-    ...diffFingerprints(info.currentFingerprint, info.previousFingerprint),
+    ...changedSources(info.previousFingerprint, info.currentFingerprint),
+    ...changedSources(info.currentFingerprint, info.previousFingerprint),
   ]
 
   const includesChanges = diff.some(s =>
@@ -247,6 +255,9 @@ const createDiff = async () => {
 }
 
 // -- Helpers
+
+const sourceId = (source: FingerprintSource): string =>
+  source.type === 'contents' ? source.id : source.filePath
 
 const checkoutCommit = async (commit: string) => {
   await exec(`git checkout ${commit}`)
