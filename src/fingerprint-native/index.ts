@@ -221,10 +221,15 @@ const createDiff = async () => {
     return false
   }
 
-  const diff = diffFingerprints(
-    info.currentFingerprint,
-    info.previousFingerprint,
-  )
+  /*
+   * diffFingerprints is directional: it returns sources from its second
+   * argument that are absent from its first. Check both directions so adding or
+   * removing a native source requires a rebuild.
+   */
+  const diff = [
+    ...diffFingerprints(info.previousFingerprint, info.currentFingerprint),
+    ...diffFingerprints(info.currentFingerprint, info.previousFingerprint),
+  ]
 
   const includesChanges = diff.some(s =>
     s.reasons.some(r => AUTOLINKING_REASONS.includes(r)),

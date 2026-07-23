@@ -63501,7 +63501,15 @@ const createDiff = async () => {
         (0, core_1.setFailed)('Previous fingerprint not found. Aborting.');
         return false;
     }
-    const diff = (0, fingerprint_1.diffFingerprints)(info.currentFingerprint, info.previousFingerprint);
+    /*
+     * diffFingerprints is directional: it returns sources from its second
+     * argument that are absent from its first. Check both directions so adding or
+     * removing a native source requires a rebuild.
+     */
+    const diff = [
+        ...(0, fingerprint_1.diffFingerprints)(info.previousFingerprint, info.currentFingerprint),
+        ...(0, fingerprint_1.diffFingerprints)(info.currentFingerprint, info.previousFingerprint),
+    ];
     const includesChanges = diff.some(s => s.reasons.some(r => AUTOLINKING_REASONS.includes(r)));
     if (includesChanges) {
         (0, core_1.setOutput)('diff', diff);
