@@ -1,11 +1,23 @@
-import {restoreCache} from '@actions/cache'
 import {getInput, setFailed, setOutput} from '@actions/core'
 import {exec, getExecOutput} from '@actions/exec'
 import {context} from '@actions/github'
-import {diffFingerprints, Fingerprint} from '@expo/fingerprint'
+import {Fingerprint, FingerprintSource} from '@expo/fingerprint'
 import {promises} from 'fs'
+import {join} from 'path'
 
-const {readFile, stat} = promises
+/*
+ * Fingerprint sources are flagged with one or more "reasons" describing why they
+ * contribute to the fingerprint. Only these three concern native autolinking -
+ * the surface that determines whether an OTA update is safe or a native rebuild
+ * is required. A change anywhere else (JS, assets) can ship over the air.
+ */
+const AUTOLINKING_REASONS = [
+  'bareRncliAutolinking',
+  'expoAutolinkingAndroid',
+  'expoAutolinkingIos',
+]
+
+const {readFile, rm, stat, writeFile} = promises
 
 type PackageManager = 'yarn' | 'pnpm' | 'npm'
 
@@ -57,6 +69,13 @@ const runInstall = async (pm: PackageManager) => {
   }
 }
 
+const cleanInstall = async (): Promise<PackageManager> => {
+  await rm('node_modules', {recursive: true, force: true})
+  const pm = await detectPackageManager()
+  await runInstall(pm)
+  return pm
+}
+
 const fingerprintCommand = (pm: PackageManager): string => {
   if (pm === 'pnpm') return 'pnpm dlx @expo/fingerprint .'
   return 'npx @expo/fingerprint .'
@@ -80,81 +99,66 @@ const profile = getInput('profile') as
   | 'testflight'
   | 'pull-request'
 const previousCommitTag = getInput('previous-commit-tag')
+const baselineFingerprintPath = getInput('baseline-fingerprint-path').trim()
+const currentFingerprintPath = join(
+  process.env.RUNNER_TEMP ?? '.',
+  'native-fingerprint.json',
+)
 const currentCommit = context.sha
 
-let mostRecentTestflightCommit: string | null = null
-
 const run = async () => {
-  // Try to restore the DB first
-  const step1 = await addToIgnore()
-  const step2 = step1 && (await restoreDb())
-  const step3 = step2 && (await getPrevFP())
-  const step4 = step3 && (await getCurrentFP())
-  step4 && (await createDiff())
+  const hasBaselineFingerprint = await getBaselineFP()
+  if (!hasBaselineFingerprint) return false
+
+  const hasCurrentFingerprint = await getCurrentFP()
+  hasCurrentFingerprint && (await createDiff())
 
   return true
 }
 
-// Step 1
-const addToIgnore = async () => {
-  await exec('echo "most-recent-testflight-commit.txt" >> .gitignore')
-  return true
-}
+const getBaselineFP = async (): Promise<boolean> => {
+  if (profile !== 'testflight' || !baselineFingerprintPath) return true
 
-// Step 2
-const restoreDb = async () => {
-  const restoreRes = await restoreCache(
-    ['most-recent-testflight-commit.txt'],
-    `most-recent-testflight-commit`,
-  )
-
-  // See if the file exists
   try {
-    await stat('most-recent-testflight-commit.txt')
-  } catch (e) {
-    return true
-  }
-
-  const commit = await readFile('most-recent-testflight-commit.txt', 'utf8')
-
-  if (commit && commit.trim().length > 0) {
-    mostRecentTestflightCommit = commit.trim()
+    info.previousFingerprint = JSON.parse(
+      await readFile(baselineFingerprintPath, 'utf8'),
+    )
+  } catch {
+    setFailed('Could not read the baseline fingerprint. Aborting.')
+    return false
   }
 
   return true
 }
 
-// Step 3
 const getCurrentFP = async () => {
   info.currentCommit = currentCommit
 
   await checkoutCommit(currentCommit)
-  await exec('rm -rf node_modules')
-  const pm = await detectPackageManager()
-  await runInstall(pm)
+  const pm = await cleanInstall()
 
-  const {stdout} = await getExecOutput(`npx @expo/fingerprint .`)
+  const {stdout} = await getExecOutput(fingerprintCommand(pm))
 
   info.currentFingerprint = JSON.parse(stdout.trim())
+  await writeFile(
+    currentFingerprintPath,
+    JSON.stringify(info.currentFingerprint),
+    'utf8',
+  )
+  setOutput('current-fingerprint-path', currentFingerprintPath)
   return true
 }
 
-// Step 4
-const getPrevFP = async () => {
+/*
+ * Compute the previous fingerprint by checking out the baseline commit and
+ * recomputing it. Used for the pull-request and production profiles; testflight
+ * reads its deployed baseline directly from an artifact.
+ */
+const getPrevFP = async (): Promise<boolean> => {
   if (profile === 'pull-request') {
     const {stdout} = await getExecOutput('git rev-parse main')
 
     info.previousCommit = stdout.trim()
-  } else if (profile === 'testflight') {
-    if (mostRecentTestflightCommit) {
-      info.previousCommit = mostRecentTestflightCommit
-    } else {
-      // const {stdout: lastTag} = await getExecOutput(
-      //   'git describe --tags --abbrev=0',
-      // )
-      const {stdout} = await getExecOutput(`git rev-parse @~`)
-      info.previousCommit = stdout.trim()
-    }
   } else if (profile === 'production') {
     const {stdout, exitCode} = await getExecOutput(
       `git rev-parse ${previousCommitTag}`,
@@ -173,45 +177,76 @@ const getPrevFP = async () => {
     return false
   }
   await checkoutCommit(info.previousCommit)
-  const pm = await detectPackageManager()
-  await runInstall(pm)
+  /*
+   * getCurrentFP already installed the current commit's dependencies into
+   * node_modules, and `git checkout` leaves that (gitignored) directory in
+   * place. Remove it before reinstalling so the baseline fingerprint is
+   * computed against the baseline's dependency tree, not a mix - a stale
+   * native module left behind could otherwise hide a real native change.
+   */
+  const pm = await cleanInstall()
 
   const {stdout} = await getExecOutput(fingerprintCommand(pm))
 
   info.previousFingerprint = JSON.parse(stdout.trim())
+
+  /*
+   * getPrevFP checks out and installs the baseline commit's dependency tree to
+   * fingerprint it. Restore the current commit and its deps before returning so
+   * any consumer step running after this action (e.g. the bundle export) operates
+   * on context.sha, not the baseline commit.
+   */
+  await checkoutCommit(currentCommit)
+  await cleanInstall()
   return true
 }
 
-// Step 5
+// Step 4
 const createDiff = async () => {
-  if (!info.currentFingerprint || !info.previousFingerprint) {
-    setFailed('Fingerprints not found. Aborting.')
+  if (!info.currentFingerprint) {
+    setFailed('Current fingerprint not found. Aborting.')
     return false
   }
 
-  const diff = diffFingerprints(
-    info.currentFingerprint,
-    info.previousFingerprint,
-  )
+  /*
+   * Without a known deployed baseline, an OTA update cannot be proven safe.
+   * Force native builds; their successful completion will seed the artifact.
+   */
+  if (profile === 'testflight' && !baselineFingerprintPath) {
+    setOutput('includes-changes', 'true')
+    return true
+  }
 
-  const hasBareRncliAutolinking = diff.some(s =>
-    s.reasons.includes('bareRncliAutolinking'),
-  )
-  const hasExpoAutolinkingAndroid = diff.some(s =>
-    s.reasons.includes('expoAutolinkingAndroid'),
-  )
-  const hasExpoAutolinkingIos = diff.some(s =>
-    s.reasons.includes('expoAutolinkingIos'),
-  )
+  if (
+    !info.previousFingerprint &&
+    (!(await getPrevFP()) || !info.previousFingerprint)
+  ) {
+    setFailed('Previous fingerprint not found. Aborting.')
+    return false
+  }
 
-  const includesChanges =
-    hasBareRncliAutolinking ||
-    hasExpoAutolinkingAndroid ||
-    hasExpoAutolinkingIos
+  const changedSources = (before: Fingerprint, after: Fingerprint) =>
+    after.sources.filter(afterSource => {
+      const beforeSource = before.sources.find(
+        source =>
+          source.type === afterSource.type &&
+          sourceId(source) === sourceId(afterSource),
+      )
+      return !beforeSource || beforeSource.hash !== afterSource.hash
+    })
+
+  const diff = [
+    ...changedSources(info.previousFingerprint, info.currentFingerprint),
+    ...changedSources(info.currentFingerprint, info.previousFingerprint),
+  ]
+
+  const includesChanges = diff.some(s =>
+    s.reasons.some(r => AUTOLINKING_REASONS.includes(r)),
+  )
 
   if (includesChanges) {
     setOutput('diff', diff)
-    setOutput('includes-changes', includesChanges ? 'true' : 'false')
+    setOutput('includes-changes', 'true')
 
     if (profile === 'production') {
       setFailed('Fingerprint changes detected. Aborting.')
@@ -221,6 +256,9 @@ const createDiff = async () => {
 }
 
 // -- Helpers
+
+const sourceId = (source: FingerprintSource): string =>
+  source.type === 'contents' ? source.id : source.filePath
 
 const checkoutCommit = async (commit: string) => {
   await exec(`git checkout ${commit}`)
