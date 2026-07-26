@@ -53997,7 +53997,7 @@ const AUTOLINKING_REASONS = [
     'expoAutolinkingAndroid',
     'expoAutolinkingIos',
 ];
-const { readFile, stat, writeFile } = fs_1.promises;
+const { readFile, rm, stat, writeFile } = fs_1.promises;
 const packageManagerName = (field) => {
     if (typeof field === 'string')
         return field;
@@ -54052,6 +54052,12 @@ const runInstall = async (pm) => {
         await (0, exec_1.exec)('yarn install --frozen-lockfile');
     }
 };
+const cleanInstall = async () => {
+    await rm('node_modules', { recursive: true, force: true });
+    const pm = await detectPackageManager();
+    await runInstall(pm);
+    return pm;
+};
 const fingerprintCommand = (pm) => {
     if (pm === 'pnpm')
         return 'pnpm dlx @expo/fingerprint .';
@@ -54091,9 +54097,7 @@ const getBaselineFP = async () => {
 const getCurrentFP = async () => {
     info.currentCommit = currentCommit;
     await checkoutCommit(currentCommit);
-    await (0, exec_1.exec)('rm -rf node_modules');
-    const pm = await detectPackageManager();
-    await runInstall(pm);
+    const pm = await cleanInstall();
     const { stdout } = await (0, exec_1.getExecOutput)(fingerprintCommand(pm));
     info.currentFingerprint = JSON.parse(stdout.trim());
     await writeFile(currentFingerprintPath, JSON.stringify(info.currentFingerprint), 'utf8');
@@ -54130,9 +54134,7 @@ const getPrevFP = async () => {
      * computed against the baseline's dependency tree, not a mix - a stale
      * native module left behind could otherwise hide a real native change.
      */
-    await (0, exec_1.exec)('rm -rf node_modules');
-    const pm = await detectPackageManager();
-    await runInstall(pm);
+    const pm = await cleanInstall();
     const { stdout } = await (0, exec_1.getExecOutput)(fingerprintCommand(pm));
     info.previousFingerprint = JSON.parse(stdout.trim());
     /*
@@ -54142,9 +54144,7 @@ const getPrevFP = async () => {
      * on context.sha, not the baseline commit.
      */
     await checkoutCommit(currentCommit);
-    await (0, exec_1.exec)('rm -rf node_modules');
-    const currentPm = await detectPackageManager();
-    await runInstall(currentPm);
+    await cleanInstall();
     return true;
 };
 // Step 4

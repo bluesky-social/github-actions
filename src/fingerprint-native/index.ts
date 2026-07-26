@@ -17,7 +17,7 @@ const AUTOLINKING_REASONS = [
   'expoAutolinkingIos',
 ]
 
-const {readFile, stat, writeFile} = promises
+const {readFile, rm, stat, writeFile} = promises
 
 type PackageManager = 'yarn' | 'pnpm' | 'npm'
 
@@ -67,6 +67,13 @@ const runInstall = async (pm: PackageManager) => {
   } else {
     await exec('yarn install --frozen-lockfile')
   }
+}
+
+const cleanInstall = async (): Promise<PackageManager> => {
+  await rm('node_modules', {recursive: true, force: true})
+  const pm = await detectPackageManager()
+  await runInstall(pm)
+  return pm
 }
 
 const fingerprintCommand = (pm: PackageManager): string => {
@@ -128,9 +135,7 @@ const getCurrentFP = async () => {
   info.currentCommit = currentCommit
 
   await checkoutCommit(currentCommit)
-  await exec('rm -rf node_modules')
-  const pm = await detectPackageManager()
-  await runInstall(pm)
+  const pm = await cleanInstall()
 
   const {stdout} = await getExecOutput(fingerprintCommand(pm))
 
@@ -179,9 +184,7 @@ const getPrevFP = async (): Promise<boolean> => {
    * computed against the baseline's dependency tree, not a mix - a stale
    * native module left behind could otherwise hide a real native change.
    */
-  await exec('rm -rf node_modules')
-  const pm = await detectPackageManager()
-  await runInstall(pm)
+  const pm = await cleanInstall()
 
   const {stdout} = await getExecOutput(fingerprintCommand(pm))
 
@@ -194,9 +197,7 @@ const getPrevFP = async (): Promise<boolean> => {
    * on context.sha, not the baseline commit.
    */
   await checkoutCommit(currentCommit)
-  await exec('rm -rf node_modules')
-  const currentPm = await detectPackageManager()
-  await runInstall(currentPm)
+  await cleanInstall()
   return true
 }
 
