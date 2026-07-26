@@ -53934,14 +53934,6 @@ function parseParams (str) {
 module.exports = parseParams
 
 
-/***/ }),
-
-/***/ 8771:
-/***/ ((module) => {
-
-"use strict";
-module.exports = {"i8":"0.20.6"};
-
 /***/ })
 
 /******/ 	});
@@ -53996,9 +53988,9 @@ const fs_1 = __nccwpck_require__(7147);
 const path_1 = __nccwpck_require__(1017);
 /*
  * Fingerprint sources are flagged with one or more "reasons" describing why they
- * contribute to the fingerprint. Only these three concern native autolinking -
- * the surface that determines whether an OTA update is safe or a native rebuild
- * is required. A change anywhere else (JS, assets) can ship over the air.
+ * contribute to the fingerprint. These reasons concern native autolinking - the
+ * surface that determines whether an OTA update is safe or a native rebuild is
+ * required. A change anywhere else (JS, assets) can ship over the air.
  */
 const AUTOLINKING_REASONS = [
     'bareRncliAutolinking',
@@ -54009,6 +54001,14 @@ const AUTOLINKING_REASONS = [
     'rncoreAutolinkingIos',
 ];
 const { readFile, rm, stat, writeFile } = fs_1.promises;
+const fingerprintWorkerPath = (0, path_1.join)(__dirname, 'fingerprint.js');
+const createFingerprint = async () => {
+    const { stdout } = await (0, exec_1.getExecOutput)(process.execPath, [
+        fingerprintWorkerPath,
+        '.',
+    ]);
+    return JSON.parse(stdout.trim());
+};
 const packageManagerName = (field) => {
     if (typeof field === 'string')
         return field;
@@ -54067,14 +54067,6 @@ const cleanInstall = async () => {
     await rm('node_modules', { recursive: true, force: true });
     const pm = await detectPackageManager();
     await runInstall(pm);
-    return pm;
-};
-const fingerprintVersion = (__nccwpck_require__(8771)/* .version */ .i8);
-const fingerprintCommand = (pm) => {
-    const fingerprintPackage = `@expo/fingerprint@${fingerprintVersion}`;
-    if (pm === 'pnpm')
-        return `pnpm dlx ${fingerprintPackage} .`;
-    return `npx ${fingerprintPackage} .`;
 };
 let info = {
     currentCommit: undefined,
@@ -54110,9 +54102,8 @@ const getBaselineFP = async () => {
 const getCurrentFP = async () => {
     info.currentCommit = currentCommit;
     await checkoutCommit(currentCommit);
-    const pm = await cleanInstall();
-    const { stdout } = await (0, exec_1.getExecOutput)(fingerprintCommand(pm));
-    info.currentFingerprint = JSON.parse(stdout.trim());
+    await cleanInstall();
+    info.currentFingerprint = await createFingerprint();
     await writeFile(currentFingerprintPath, JSON.stringify(info.currentFingerprint), 'utf8');
     (0, core_1.setOutput)('current-fingerprint-path', currentFingerprintPath);
     return true;
@@ -54147,9 +54138,8 @@ const getPrevFP = async () => {
      * computed against the baseline's dependency tree, not a mix - a stale
      * native module left behind could otherwise hide a real native change.
      */
-    const pm = await cleanInstall();
-    const { stdout } = await (0, exec_1.getExecOutput)(fingerprintCommand(pm));
-    info.previousFingerprint = JSON.parse(stdout.trim());
+    await cleanInstall();
+    info.previousFingerprint = await createFingerprint();
     /*
      * getPrevFP checks out and installs the baseline commit's dependency tree to
      * fingerprint it. Restore the current commit and its deps before returning so
