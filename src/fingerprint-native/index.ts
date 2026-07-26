@@ -15,6 +15,9 @@ const AUTOLINKING_REASONS = [
   'bareRncliAutolinking',
   'expoAutolinkingAndroid',
   'expoAutolinkingIos',
+  'rncoreAutolinking',
+  'rncoreAutolinkingAndroid',
+  'rncoreAutolinkingIos',
 ]
 
 const {readFile, rm, stat, writeFile} = promises
@@ -76,9 +79,13 @@ const cleanInstall = async (): Promise<PackageManager> => {
   return pm
 }
 
+const fingerprintVersion: string =
+  require('@expo/fingerprint/package.json').version
+
 const fingerprintCommand = (pm: PackageManager): string => {
-  if (pm === 'pnpm') return 'pnpm dlx @expo/fingerprint .'
-  return 'npx @expo/fingerprint .'
+  const fingerprintPackage = `@expo/fingerprint@${fingerprintVersion}`
+  if (pm === 'pnpm') return `pnpm dlx ${fingerprintPackage} .`
+  return `npx ${fingerprintPackage} .`
 }
 
 type Info = {

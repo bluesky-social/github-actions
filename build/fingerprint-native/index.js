@@ -53934,6 +53934,14 @@ function parseParams (str) {
 module.exports = parseParams
 
 
+/***/ }),
+
+/***/ 8771:
+/***/ ((module) => {
+
+"use strict";
+module.exports = {"i8":"0.20.6"};
+
 /***/ })
 
 /******/ 	});
@@ -53996,6 +54004,9 @@ const AUTOLINKING_REASONS = [
     'bareRncliAutolinking',
     'expoAutolinkingAndroid',
     'expoAutolinkingIos',
+    'rncoreAutolinking',
+    'rncoreAutolinkingAndroid',
+    'rncoreAutolinkingIos',
 ];
 const { readFile, rm, stat, writeFile } = fs_1.promises;
 const packageManagerName = (field) => {
@@ -54058,10 +54069,12 @@ const cleanInstall = async () => {
     await runInstall(pm);
     return pm;
 };
+const fingerprintVersion = (__nccwpck_require__(8771)/* .version */ .i8);
 const fingerprintCommand = (pm) => {
+    const fingerprintPackage = `@expo/fingerprint@${fingerprintVersion}`;
     if (pm === 'pnpm')
-        return 'pnpm dlx @expo/fingerprint .';
-    return 'npx @expo/fingerprint .';
+        return `pnpm dlx ${fingerprintPackage} .`;
+    return `npx ${fingerprintPackage} .`;
 };
 let info = {
     currentCommit: undefined,
