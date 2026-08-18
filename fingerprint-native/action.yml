@@ -26,6 +26,12 @@ outputs:
     description: Whether there are changes that prevent the commit from being properly deployed with the current client.
   diff:
     description: The diff between the two fingerprints.
+  diff-path:
+    description: >-
+      Path to the full fingerprint diff as JSON. Upload this file as an
+      artifact instead of embedding the unbounded diff output in PR comments.
+  diff-summary:
+    description: A bounded, human-readable summary of the fingerprint diff.
   current-fingerprint-path:
     description: >-
       Path to the current commit's full Expo fingerprint. Persist this as the

@@ -27,6 +27,31 @@ profile.
 
 This value is automatically set by the action and should not be set manually.
 
+## Outputs
+
+### `includes-changes`
+
+Set to `true` when the comparison contains native autolinking changes.
+
+### `diff`
+
+The full fingerprint diff. This output is retained for compatibility, but can
+be too large for a pull request comment after a major native dependency update.
+
+### `diff-path`
+
+The path to the full fingerprint diff as a JSON file. Upload this file as a
+workflow artifact when `includes-changes` is `true`.
+
+### `diff-summary`
+
+A bounded, human-readable summary suitable for pull request comments. It
+includes the total number of changed sources and at most 20 source identifiers.
+
+### `current-fingerprint-path`
+
+The path to the current commit's full Expo fingerprint.
+
 ## Updating the `testflight` commit cache
 
 Once a new TestFlight client has been successfully built by GitHub, you should update the cache

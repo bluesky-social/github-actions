@@ -104,6 +104,10 @@ const currentFingerprintPath = join(
   process.env.RUNNER_TEMP ?? '.',
   'native-fingerprint.json',
 )
+const fingerprintDiffPath = join(
+  process.env.RUNNER_TEMP ?? '.',
+  'native-fingerprint-diff.json',
+)
 const currentCommit = context.sha
 
 const run = async () => {
@@ -245,7 +249,10 @@ const createDiff = async () => {
   )
 
   if (includesChanges) {
+    await writeFile(fingerprintDiffPath, JSON.stringify(diff, null, 2), 'utf8')
     setOutput('diff', diff)
+    setOutput('diff-path', fingerprintDiffPath)
+    setOutput('diff-summary', summarizeDiff(diff))
     setOutput('includes-changes', 'true')
 
     if (profile === 'production') {
@@ -259,6 +266,18 @@ const createDiff = async () => {
 
 const sourceId = (source: FingerprintSource): string =>
   source.type === 'contents' ? source.id : source.filePath
+
+const summarizeDiff = (diff: FingerprintSource[]): string => {
+  const limit = 20
+  const sources = diff.slice(0, limit).map(source => `- ${sourceId(source)}`)
+  const remaining = diff.length - sources.length
+
+  return [
+    `${diff.length} native fingerprint source${diff.length === 1 ? '' : 's'} changed.`,
+    ...sources,
+    ...(remaining > 0 ? [`- ...and ${remaining} more`] : []),
+  ].join('\n')
+}
 
 const checkoutCommit = async (commit: string) => {
   await exec(`git checkout ${commit}`)

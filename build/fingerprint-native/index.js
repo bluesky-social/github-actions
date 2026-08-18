@@ -54073,6 +54073,7 @@ const profile = (0, core_1.getInput)('profile');
 const previousCommitTag = (0, core_1.getInput)('previous-commit-tag');
 const baselineFingerprintPath = (0, core_1.getInput)('baseline-fingerprint-path').trim();
 const currentFingerprintPath = (0, path_1.join)(process.env.RUNNER_TEMP ?? '.', 'native-fingerprint.json');
+const fingerprintDiffPath = (0, path_1.join)(process.env.RUNNER_TEMP ?? '.', 'native-fingerprint-diff.json');
 const currentCommit = github_1.context.sha;
 const run = async () => {
     const hasBaselineFingerprint = await getBaselineFP();
@@ -54177,7 +54178,10 @@ const createDiff = async () => {
     ];
     const includesChanges = diff.some(s => s.reasons.some(r => AUTOLINKING_REASONS.includes(r)));
     if (includesChanges) {
+        await writeFile(fingerprintDiffPath, JSON.stringify(diff, null, 2), 'utf8');
         (0, core_1.setOutput)('diff', diff);
+        (0, core_1.setOutput)('diff-path', fingerprintDiffPath);
+        (0, core_1.setOutput)('diff-summary', summarizeDiff(diff));
         (0, core_1.setOutput)('includes-changes', 'true');
         if (profile === 'production') {
             (0, core_1.setFailed)('Fingerprint changes detected. Aborting.');
@@ -54187,6 +54191,16 @@ const createDiff = async () => {
 };
 // -- Helpers
 const sourceId = (source) => source.type === 'contents' ? source.id : source.filePath;
+const summarizeDiff = (diff) => {
+    const limit = 20;
+    const sources = diff.slice(0, limit).map(source => `- ${sourceId(source)}`);
+    const remaining = diff.length - sources.length;
+    return [
+        `${diff.length} native fingerprint source${diff.length === 1 ? '' : 's'} changed.`,
+        ...sources,
+        ...(remaining > 0 ? [`- ...and ${remaining} more`] : []),
+    ].join('\n');
+};
 const checkoutCommit = async (commit) => {
     await (0, exec_1.exec)(`git checkout ${commit}`);
 };
