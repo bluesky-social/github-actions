@@ -1,0 +1,176 @@
+---
+name: Roast pull request
+author: bluesky-social
+description: Run a cross-model Roast review and publish the result on a pull request
+
+inputs:
+  api-key:
+    description: AI Gateway key used by Roast (the full email:key value)
+    required: true
+  release-app-id:
+    description: GitHub App ID with contents:read access to bluesky-social/roast
+    required: true
+  release-app-private-key:
+    description: Private key for the GitHub App used to download Roast
+    required: true
+  github-token:
+    description: Token used to create or update the pull request comment
+    required: false
+    default: ${{ github.token }}
+  release-tag:
+    description: Pinned bluesky-social/roast release tag
+    required: false
+    default: v1.0.11
+  base-sha:
+    description: Base commit for the review (defaults to the pull request base SHA)
+    required: false
+    default: ${{ github.event.pull_request.base.sha }}
+  pr-number:
+    description: Pull request to comment on (defaults to the event pull request)
+    required: false
+    default: ${{ github.event.pull_request.number }}
+  task:
+    description: What the pull request was intended to do
+    required: false
+    default: ${{ github.event.pull_request.title }}
+  comment:
+    description: Create or update a pull request comment with the review
+    required: false
+    default: 'true'
+  fail-on-severity:
+    description: Fail when Roast finds this severity or higher (INFO, LOW, MEDIUM, HIGH, or CRITICAL); empty never fails for findings
+    required: false
+    default: ''
+  artifact-retention-days:
+    description: Number of days to retain the complete Roast run record
+    required: false
+    default: '14'
+
+outputs:
+  assessment:
+    description: Roast assessment, such as NO_FINDINGS or FINDINGS_PRESENT
+    value: ${{ steps.review.outputs.assessment }}
+  findings-count:
+    description: Number of findings that survived verification
+    value: ${{ steps.review.outputs.findings-count }}
+  run-id:
+    description: Roast run identifier
+    value: ${{ steps.review.outputs.run-id }}
+  version:
+    description: Installed Roast version
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Restore cached Roast release
+      id: release-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.tool_cache }}/roast-release
+        key: roast-release-v1-${{ inputs.release-tag }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Mint Roast release token
+      id: release-token
+      if: steps.release-cache.outputs.cache-hit != 'true'
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        app-id: ${{ inputs.release-app-id }}
+        private-key: ${{ inputs.release-app-private-key }}
+        owner: bluesky-social
+        repositories: roast
+        permission-contents: read
+
+    - name: Install Roast
+      id: install
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.release-token.outputs.token }}
+        RELEASE_TAG: ${{ inputs.release-tag }}
+        RELEASE_CACHE_DIR: ${{ runner.tool_cache }}/roast-release
+      run: '${GITHUB_ACTION_PATH}/install.sh'
+
+    - name: Run Roast review
+      id: review
+      shell: bash
+      env:
+        ROAST_API_KEY: ${{ inputs.api-key }}
+        ROAST_BASE_SHA: ${{ inputs.base-sha }}
+        ROAST_TASK: ${{ inputs.task }}
+        ROAST_FAIL_ON_SEVERITY: ${{ inputs.fail-on-severity }}
+        ROAST_RECORD_DIR: ${{ runner.temp }}/roast-records
+      run: '${GITHUB_ACTION_PATH}/run.sh'
+
+    - name: Prepare Roast review comment
+      id: prepare-comment
+      if: always() && inputs.comment == 'true' && inputs.pr-number != '' && (steps.review.outputs.outcome == 'clean' || steps.review.outputs.outcome == 'findings' || steps.review.outputs.outcome == 'gate-failed')
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        ROAST_BASE_SHA: ${{ inputs.base-sha }}
+        ROAST_RUN_ID: ${{ steps.review.outputs.run-id }}
+        ROAST_RECORD_DIR: ${{ runner.temp }}/roast-records
+        ROAST_VERSION: ${{ steps.install.outputs.version }}
+      run: '${GITHUB_ACTION_PATH}/prepare-comment.sh'
+
+    - name: Publish Roast review comment
+      id: comment
+      if: always() && steps.prepare-comment.outcome == 'success'
+      continue-on-error: true
+      uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+      with:
+        header: roast-review
+        path: ${{ runner.temp }}/roast-comment.md
+        number_force: ${{ inputs.pr-number }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+
+    - name: Upload Roast run record
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: roast-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/roast-records
+        if-no-files-found: ignore
+        include-hidden-files: true
+        retention-days: ${{ inputs.artifact-retention-days }}
+
+    - name: Check Roast outcome
+      if: always()
+      shell: bash
+      env:
+        COMMENT_OUTCOME: ${{ steps.comment.outcome }}
+        PREPARE_COMMENT_OUTCOME: ${{ steps.prepare-comment.outcome }}
+        REVIEW_OUTCOME: ${{ steps.review.outputs.outcome }}
+      run: |
+        if [[ "$PREPARE_COMMENT_OUTCOME" == "failure" ]]; then
+          echo "Roast completed, but its pull request comment could not be prepared safely." >&2
+          exit 1
+        fi
+
+        if [[ "$COMMENT_OUTCOME" == "failure" ]]; then
+          echo "Roast completed, but its pull request comment could not be published." >&2
+          exit 1
+        fi
+
+        case "$REVIEW_OUTCOME" in
+          clean|findings)
+            ;;
+          gate-failed)
+            echo "Roast found an issue at or above the configured severity threshold." >&2
+            exit 1
+            ;;
+          no-diff)
+            echo "Roast did not run because the selected diff was empty." >&2
+            exit 1
+            ;;
+          incomplete)
+            echo "Roast was cut off before it completed; do not treat this as a clean review." >&2
+            exit 1
+            ;;
+          *)
+            echo "Roast did not produce a valid review." >&2
+            exit 1
+            ;;
+        esac
