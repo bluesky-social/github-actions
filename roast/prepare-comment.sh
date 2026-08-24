@@ -8,6 +8,7 @@ set -euo pipefail
 : "${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
 : "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
 : "${PR_NUMBER:?PR_NUMBER is required}"
+: "${ROAST_BASE_SHA:?ROAST_BASE_SHA is required}"
 : "${ROAST_RUN_ID:?ROAST_RUN_ID is required}"
 : "${ROAST_RECORD_DIR:?ROAST_RECORD_DIR is required}"
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
@@ -25,9 +26,21 @@ if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
 fi
 
 reviewed_head="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
-current_head="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+read -r current_head current_base < <(
+  gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '[.head.sha, .base.sha] | @tsv'
+)
 if [[ "$reviewed_head" != "$current_head" ]]; then
   echo "Refusing to publish stale Roast result for $reviewed_head; PR head is $current_head" >&2
+  exit 1
+fi
+
+if ! git -C "$GITHUB_WORKSPACE" cat-file -e "${current_base}^{commit}" 2>/dev/null; then
+  git -C "$GITHUB_WORKSPACE" fetch --no-tags origin "$current_base"
+fi
+reviewed_merge_base="$(git -C "$GITHUB_WORKSPACE" merge-base "$ROAST_BASE_SHA" "$reviewed_head")"
+current_merge_base="$(git -C "$GITHUB_WORKSPACE" merge-base "$current_base" "$current_head")"
+if [[ "$reviewed_merge_base" != "$current_merge_base" ]]; then
+  echo "Refusing to publish stale Roast result; the PR merge base changed from $reviewed_merge_base to $current_merge_base" >&2
   exit 1
 fi
 

@@ -64,7 +64,15 @@ outcome="failure"
 if [[ -s "$stdout_file" ]] && jq -e '
   type == "object" and
   (.assessment | type == "string" and IN("NO_FINDINGS", "FINDINGS_PRESENT", "NO_DIFF", "INCOMPLETE_NO_SUBMISSION")) and
-  (.findings | type == "array") and
+  (.findings | type == "array" and all(.[];
+    type == "object" and
+    (.severity | type == "string" and IN("INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL")) and
+    (.description | type == "string" and length > 0) and
+    (.file | type == "string" and length > 0) and
+    (.lines | type == "array" and all(.[]; type == "number" and . > 0)) and
+    (.code_quote | type == "string" and length > 0) and
+    (.fixed_code | type == "string" and length > 0)
+  )) and
   ((.incomplete // false) | type == "boolean") and
   (
     if .assessment == "FINDINGS_PRESENT" then
@@ -90,7 +98,7 @@ if [[ -s "$stdout_file" ]] && jq -e '
     outcome="no-diff"
   elif [[ "$incomplete" == "true" ]]; then
     outcome="incomplete"
-  elif [[ "$roast_status" -eq 1 && -n "${ROAST_FAIL_ON_SEVERITY:-}" ]]; then
+  elif [[ "$roast_status" -eq 1 && -n "${ROAST_FAIL_ON_SEVERITY:-}" && "$assessment" == "FINDINGS_PRESENT" ]]; then
     outcome="gate-failed"
   elif [[ "$roast_status" -ne 0 ]]; then
     outcome="failure"

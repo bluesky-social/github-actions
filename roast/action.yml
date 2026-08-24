@@ -109,6 +109,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ inputs.pr-number }}
+        ROAST_BASE_SHA: ${{ inputs.base-sha }}
         ROAST_RUN_ID: ${{ steps.review.outputs.run-id }}
         ROAST_RECORD_DIR: ${{ runner.temp }}/roast-records
         ROAST_VERSION: ${{ steps.install.outputs.version }}
