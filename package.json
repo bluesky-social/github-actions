@@ -18,7 +18,7 @@
     "@actions/tool-cache": "^4.0.0",
     "@expo/fingerprint": "^0.8.0",
     "semver": "^7.7.3",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
