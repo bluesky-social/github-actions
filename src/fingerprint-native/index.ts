@@ -1,23 +1,36 @@
 import {getInput, setFailed, setOutput} from '@actions/core'
 import {exec, getExecOutput} from '@actions/exec'
 import {context} from '@actions/github'
-import {Fingerprint, FingerprintSource} from '@expo/fingerprint'
+import type {Fingerprint, FingerprintSource} from '@expo/fingerprint'
 import {promises} from 'fs'
 import {join} from 'path'
 
 /*
  * Fingerprint sources are flagged with one or more "reasons" describing why they
- * contribute to the fingerprint. Only these three concern native autolinking -
- * the surface that determines whether an OTA update is safe or a native rebuild
- * is required. A change anywhere else (JS, assets) can ship over the air.
+ * contribute to the fingerprint. These reasons concern native autolinking - the
+ * surface that determines whether an OTA update is safe or a native rebuild is
+ * required. A change anywhere else (JS, assets) can ship over the air.
  */
 const AUTOLINKING_REASONS = [
   'bareRncliAutolinking',
   'expoAutolinkingAndroid',
   'expoAutolinkingIos',
+  'rncoreAutolinking',
+  'rncoreAutolinkingAndroid',
+  'rncoreAutolinkingIos',
 ]
 
 const {readFile, rm, stat, writeFile} = promises
+
+const fingerprintWorkerPath = join(__dirname, 'fingerprint.js')
+
+const createFingerprint = async (): Promise<Fingerprint> => {
+  const {stdout} = await getExecOutput(process.execPath, [
+    fingerprintWorkerPath,
+    '.',
+  ])
+  return JSON.parse(stdout.trim())
+}
 
 type PackageManager = 'yarn' | 'pnpm' | 'npm'
 
@@ -69,16 +82,10 @@ const runInstall = async (pm: PackageManager) => {
   }
 }
 
-const cleanInstall = async (): Promise<PackageManager> => {
+const cleanInstall = async () => {
   await rm('node_modules', {recursive: true, force: true})
   const pm = await detectPackageManager()
   await runInstall(pm)
-  return pm
-}
-
-const fingerprintCommand = (pm: PackageManager): string => {
-  if (pm === 'pnpm') return 'pnpm dlx @expo/fingerprint .'
-  return 'npx @expo/fingerprint .'
 }
 
 type Info = {
@@ -135,11 +142,9 @@ const getCurrentFP = async () => {
   info.currentCommit = currentCommit
 
   await checkoutCommit(currentCommit)
-  const pm = await cleanInstall()
+  await cleanInstall()
 
-  const {stdout} = await getExecOutput(fingerprintCommand(pm))
-
-  info.currentFingerprint = JSON.parse(stdout.trim())
+  info.currentFingerprint = await createFingerprint()
   await writeFile(
     currentFingerprintPath,
     JSON.stringify(info.currentFingerprint),
@@ -184,11 +189,9 @@ const getPrevFP = async (): Promise<boolean> => {
    * computed against the baseline's dependency tree, not a mix - a stale
    * native module left behind could otherwise hide a real native change.
    */
-  const pm = await cleanInstall()
+  await cleanInstall()
 
-  const {stdout} = await getExecOutput(fingerprintCommand(pm))
-
-  info.previousFingerprint = JSON.parse(stdout.trim())
+  info.previousFingerprint = await createFingerprint()
 
   /*
    * getPrevFP checks out and installs the baseline commit's dependency tree to
