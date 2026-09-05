@@ -1,0 +1,33 @@
+---
+name: Resolve Fingerprint Runtime
+author: bluesky-social
+description: Resolve and optionally compare a project's canonical native runtime report
+runs:
+  using: node24
+  main: ../build/fingerprint-runtime/index.js
+inputs:
+  platform:
+    description: Native platform to resolve (`ios` or `android`).
+    required: true
+  profile:
+    description: Native environment profile (`production` or `testflight`).
+    required: true
+  source-commit:
+    description: Full immutable source commit SHA expected in the generated report.
+    required: true
+  working-directory:
+    description: Prepared project checkout containing scripts/ota/resolve-runtime.mjs.
+    required: false
+    default: .
+  baseline-report-path:
+    description: Optional path to a previously generated canonical runtime report.
+    required: false
+outputs:
+  report-path:
+    description: Path to the validated runtime report. Upload this as the authoritative artifact.
+  runtime-version:
+    description: Resolved runtime hash. Prefer report-path across jobs because hash-like outputs may be suppressed.
+  changed:
+    description: Literal true or false when a baseline was supplied; unset when no comparison was requested.
+  diff:
+    description: JSON source diff when a baseline was supplied.

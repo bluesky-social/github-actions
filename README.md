@@ -7,4 +7,7 @@ individual actions, view the README.md in the respective action's directory.
 
 [README.md](./fingerprint-native/README.md)
 
+### `fingerprint-runtime`
+
+[README.md](./fingerprint-runtime/README.md)
 
