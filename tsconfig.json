@@ -8,7 +8,7 @@
       "#fingerprint-native/*": ["./src/fingerprint-native*"],
       "#fingerprint-native-post/*": ["./src/fingerprint-native-post*"]
     },
-    "rootDir": "./src/fingerprint-native",
+    "rootDir": "./src",
     "outDir": "./build"
   },
   "exclude": ["build", "node_modules"]
