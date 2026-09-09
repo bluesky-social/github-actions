@@ -1,15 +1,15 @@
 import {getInput, setFailed, setOutput} from '@actions/core'
 import {exec, getExecOutput} from '@actions/exec'
 import {context} from '@actions/github'
-import {Fingerprint, FingerprintSource} from '@expo/fingerprint'
+import type {Fingerprint, FingerprintSource} from '@expo/fingerprint'
 import {promises} from 'fs'
 import {join} from 'path'
 
 /*
  * Fingerprint sources are flagged with one or more "reasons" describing why they
- * contribute to the fingerprint. Only these three concern native autolinking -
- * the surface that determines whether an OTA update is safe or a native rebuild
- * is required. A change anywhere else (JS, assets) can ship over the air.
+ * contribute to the fingerprint. These reasons concern native autolinking - the
+ * surface that determines whether an OTA update is safe or a native rebuild is
+ * required. A change anywhere else (JS, assets) can ship over the air.
  */
 const AUTOLINKING_REASONS = [
   'bareRncliAutolinking',
@@ -21,6 +21,20 @@ const AUTOLINKING_REASONS = [
 ]
 
 const {readFile, rm, stat, writeFile} = promises
+
+const fingerprintWorkerPath = join(__dirname, 'fingerprint.js')
+
+const createFingerprint = async (): Promise<Fingerprint> => {
+  const {stdout} = await getExecOutput(
+    process.execPath,
+    [fingerprintWorkerPath, '.'],
+    {
+      silent: true,
+      listeners: {stderr: data => process.stderr.write(data)},
+    },
+  )
+  return JSON.parse(stdout.trim())
+}
 
 type PackageManager = 'yarn' | 'pnpm' | 'npm'
 
@@ -63,7 +77,6 @@ const detectPackageManager = async (): Promise<PackageManager> => {
 
 const runInstall = async (pm: PackageManager) => {
   if (pm === 'pnpm') {
-    await exec('npm install -g pnpm@11.5.3') // > 10.21.0 will defer to `packageManager` version.
     await exec('pnpm install --frozen-lockfile')
   } else if (pm === 'npm') {
     await exec('npm ci')
@@ -72,16 +85,12 @@ const runInstall = async (pm: PackageManager) => {
   }
 }
 
-const cleanInstall = async (): Promise<PackageManager> => {
+const cleanInstall = async () => {
+  // Checkouts leave ignored dependencies behind. Remove them so deleted native
+  // modules from another commit cannot contaminate this fingerprint.
   await rm('node_modules', {recursive: true, force: true})
   const pm = await detectPackageManager()
   await runInstall(pm)
-  return pm
-}
-
-const fingerprintCommand = (pm: PackageManager): string => {
-  if (pm === 'pnpm') return 'pnpm dlx @expo/fingerprint .'
-  return 'npx @expo/fingerprint .'
 }
 
 type Info = {
@@ -113,6 +122,10 @@ const run = async () => {
   const hasBaselineFingerprint = await getBaselineFP()
   if (!hasBaselineFingerprint) return false
 
+  // Compute the baseline first so the final install leaves the current commit's
+  // dependency tree ready for subsequent steps, without a third install.
+  if (profile !== 'testflight' && !(await getPrevFP())) return false
+
   const hasCurrentFingerprint = await getCurrentFP()
   hasCurrentFingerprint && (await createDiff())
 
@@ -138,11 +151,9 @@ const getCurrentFP = async () => {
   info.currentCommit = currentCommit
 
   await checkoutCommit(currentCommit)
-  const pm = await cleanInstall()
+  await cleanInstall()
 
-  const {stdout} = await getExecOutput(fingerprintCommand(pm))
-
-  info.currentFingerprint = JSON.parse(stdout.trim())
+  info.currentFingerprint = await createFingerprint()
   await writeFile(
     currentFingerprintPath,
     JSON.stringify(info.currentFingerprint),
@@ -180,27 +191,9 @@ const getPrevFP = async (): Promise<boolean> => {
     return false
   }
   await checkoutCommit(info.previousCommit)
-  /*
-   * getCurrentFP already installed the current commit's dependencies into
-   * node_modules, and `git checkout` leaves that (gitignored) directory in
-   * place. Remove it before reinstalling so the baseline fingerprint is
-   * computed against the baseline's dependency tree, not a mix - a stale
-   * native module left behind could otherwise hide a real native change.
-   */
-  const pm = await cleanInstall()
-
-  const {stdout} = await getExecOutput(fingerprintCommand(pm))
-
-  info.previousFingerprint = JSON.parse(stdout.trim())
-
-  /*
-   * getPrevFP checks out and installs the baseline commit's dependency tree to
-   * fingerprint it. Restore the current commit and its deps before returning so
-   * any consumer step running after this action (e.g. the bundle export) operates
-   * on context.sha, not the baseline commit.
-   */
-  await checkoutCommit(currentCommit)
   await cleanInstall()
+
+  info.previousFingerprint = await createFingerprint()
   return true
 }
 
@@ -220,10 +213,7 @@ const createDiff = async () => {
     return true
   }
 
-  if (
-    !info.previousFingerprint &&
-    (!(await getPrevFP()) || !info.previousFingerprint)
-  ) {
+  if (!info.previousFingerprint) {
     setFailed('Previous fingerprint not found. Aborting.')
     return false
   }

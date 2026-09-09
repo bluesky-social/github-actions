@@ -7,6 +7,20 @@ cache previous fingerprints. We have experience some issues with the caching app
 are often invalidated (because of Docker build caches), leading to many unnecessary rebuilds of
 TestFlight/internal clients.
 
+## Prerequisites
+
+Check out the repository and set up Node and its package manager before running
+this action (for example, with `pnpm/action-setup` and `actions/setup-node`). The
+action uses the package manager on `PATH`; it does not install one globally.
+When comparing two commits, the configured package managers must support both
+commits' dependency installs, including any version switching specified by the
+project.
+
+For `production` and `pull-request`, the action installs and fingerprints the
+baseline first, then the current commit. It finishes with the current commit and
+its dependencies ready for subsequent steps. `testflight` installs only the
+current commit and compares against the supplied fingerprint artifact.
+
 ## Inputs
 
 ### `profile`

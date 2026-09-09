@@ -7,4 +7,9 @@ individual actions, view the README.md in the respective action's directory.
 
 [README.md](./fingerprint-native/README.md)
 
+### Development
 
+Run `yarn install --frozen-lockfile`, then `yarn build` to regenerate the checked-in
+action bundles, then `yarn test` to exercise them against local Git fixtures.
+TypeScript is pinned to 5.9.3 because `ncc` and the ESLint parser
+depend on its JavaScript compiler API, which TypeScript 7 no longer provides.
