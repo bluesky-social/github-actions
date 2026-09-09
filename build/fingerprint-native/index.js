@@ -53994,6 +53994,9 @@ const path_1 = __nccwpck_require__(1017);
  */
 const AUTOLINKING_REASONS = [
     'bareRncliAutolinking',
+    'rncoreAutolinking',
+    'rncoreAutolinkingIos',
+    'rncoreAutolinkingAndroid',
     'expoAutolinkingAndroid',
     'expoAutolinkingIos',
 ];
