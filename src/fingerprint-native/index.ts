@@ -18,9 +18,6 @@ const AUTOLINKING_REASONS = [
   'rncoreAutolinkingAndroid',
   'expoAutolinkingAndroid',
   'expoAutolinkingIos',
-  'rncoreAutolinking',
-  'rncoreAutolinkingAndroid',
-  'rncoreAutolinkingIos',
 ]
 
 const {readFile, rm, stat, writeFile} = promises

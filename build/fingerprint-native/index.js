@@ -53999,9 +53999,6 @@ const AUTOLINKING_REASONS = [
     'rncoreAutolinkingAndroid',
     'expoAutolinkingAndroid',
     'expoAutolinkingIos',
-    'rncoreAutolinking',
-    'rncoreAutolinkingAndroid',
-    'rncoreAutolinkingIos',
 ];
 const { readFile, rm, stat, writeFile } = fs_1.promises;
 const fingerprintWorkerPath = (0, path_1.join)(__dirname, 'fingerprint.js');
