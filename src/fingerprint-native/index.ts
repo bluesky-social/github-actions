@@ -25,10 +25,14 @@ const {readFile, rm, stat, writeFile} = promises
 const fingerprintWorkerPath = join(__dirname, 'fingerprint.js')
 
 const createFingerprint = async (): Promise<Fingerprint> => {
-  const {stdout} = await getExecOutput(process.execPath, [
-    fingerprintWorkerPath,
-    '.',
-  ])
+  const {stdout} = await getExecOutput(
+    process.execPath,
+    [fingerprintWorkerPath, '.'],
+    {
+      silent: true,
+      listeners: {stderr: data => process.stderr.write(data)},
+    },
+  )
   return JSON.parse(stdout.trim())
 }
 
@@ -73,7 +77,6 @@ const detectPackageManager = async (): Promise<PackageManager> => {
 
 const runInstall = async (pm: PackageManager) => {
   if (pm === 'pnpm') {
-    await exec('npm install -g pnpm@11.5.3') // > 10.21.0 will defer to `packageManager` version.
     await exec('pnpm install --frozen-lockfile')
   } else if (pm === 'npm') {
     await exec('npm ci')
@@ -83,6 +86,8 @@ const runInstall = async (pm: PackageManager) => {
 }
 
 const cleanInstall = async () => {
+  // Checkouts leave ignored dependencies behind. Remove them so deleted native
+  // modules from another commit cannot contaminate this fingerprint.
   await rm('node_modules', {recursive: true, force: true})
   const pm = await detectPackageManager()
   await runInstall(pm)
@@ -116,6 +121,10 @@ const currentCommit = context.sha
 const run = async () => {
   const hasBaselineFingerprint = await getBaselineFP()
   if (!hasBaselineFingerprint) return false
+
+  // Compute the baseline first so the final install leaves the current commit's
+  // dependency tree ready for subsequent steps, without a third install.
+  if (profile !== 'testflight' && !(await getPrevFP())) return false
 
   const hasCurrentFingerprint = await getCurrentFP()
   hasCurrentFingerprint && (await createDiff())
@@ -182,25 +191,9 @@ const getPrevFP = async (): Promise<boolean> => {
     return false
   }
   await checkoutCommit(info.previousCommit)
-  /*
-   * getCurrentFP already installed the current commit's dependencies into
-   * node_modules, and `git checkout` leaves that (gitignored) directory in
-   * place. Remove it before reinstalling so the baseline fingerprint is
-   * computed against the baseline's dependency tree, not a mix - a stale
-   * native module left behind could otherwise hide a real native change.
-   */
   await cleanInstall()
 
   info.previousFingerprint = await createFingerprint()
-
-  /*
-   * getPrevFP checks out and installs the baseline commit's dependency tree to
-   * fingerprint it. Restore the current commit and its deps before returning so
-   * any consumer step running after this action (e.g. the bundle export) operates
-   * on context.sha, not the baseline commit.
-   */
-  await checkoutCommit(currentCommit)
-  await cleanInstall()
   return true
 }
 
@@ -220,10 +213,7 @@ const createDiff = async () => {
     return true
   }
 
-  if (
-    !info.previousFingerprint &&
-    (!(await getPrevFP()) || !info.previousFingerprint)
-  ) {
+  if (!info.previousFingerprint) {
     setFailed('Previous fingerprint not found. Aborting.')
     return false
   }
