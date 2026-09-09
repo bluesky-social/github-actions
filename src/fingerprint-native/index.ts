@@ -13,6 +13,9 @@ import {join} from 'path'
  */
 const AUTOLINKING_REASONS = [
   'bareRncliAutolinking',
+  'rncoreAutolinking',
+  'rncoreAutolinkingIos',
+  'rncoreAutolinkingAndroid',
   'expoAutolinkingAndroid',
   'expoAutolinkingIos',
 ]
