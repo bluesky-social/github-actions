@@ -21,6 +21,14 @@ baseline first, then the current commit. It finishes with the current commit and
 its dependencies ready for subsequent steps. `testflight` installs only the
 current commit and compares against the supplied fingerprint artifact.
 
+## Fingerprint configuration
+
+The action bundles its own `@expo/fingerprint` (currently 0.21.6) rather than using the project's,
+but it still loads the project's `fingerprint.config.js`. Since 0.21 (Expo SDK 58) the default
+preset is `balanced`, which hashes autolinked native modules by their `package.json` version instead
+of their files. Set `preset: 'strict'` in `fingerprint.config.js` to keep detecting native changes
+that don't come with a version bump.
+
 ## Inputs
 
 ### `profile`
