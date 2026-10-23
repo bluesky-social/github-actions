@@ -160,6 +160,35 @@ test('bundled worker matches Expo, including config and plugin sources', t => {
   assert(bundled.sources.some(s => s.reasons.includes('rncoreAutolinkingIos')))
 })
 
+test('bundled worker follows the project fingerprint preset', t => {
+  const p = project(t)
+  execFileSync('pnpm', ['install', '--frozen-lockfile'], {
+    cwd: p.cwd,
+    env: p.env,
+  })
+  // A versioned module lets 'balanced' hash it by package.json instead of files.
+  writeFileSync(
+    join(p.cwd, 'node_modules/native-fixture/package.json'),
+    JSON.stringify({name: 'native-fixture', version: '1.0.0'}),
+  )
+  const nativeSourceTypes = () => [
+    ...new Set(
+      p
+        .fingerprint()
+        .sources.filter(s =>
+          s.filePath?.startsWith('node_modules/native-fixture'),
+        )
+        .map(s => s.type),
+    ),
+  ]
+  assert.deepEqual(nativeSourceTypes(), ['package'])
+  writeFileSync(
+    join(p.cwd, 'fingerprint.config.js'),
+    `module.exports = {preset: 'strict'}\n`,
+  )
+  assert.deepEqual(nativeSourceTypes(), ['dir'])
+})
+
 for (const [profile, native, status, changed] of [
   ['pull-request', 'current', 0, 'true'],
   ['production', 'baseline', 0, undefined],
