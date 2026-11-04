@@ -94,21 +94,21 @@
   resolved "https://registry.yarnpkg.com/@eslint/js/-/js-8.57.0.tgz#a5417ae8427873f1dd08b70b3574b453e67b5f7f"
   integrity sha512-Ys+3g2TaW7gADOJzPt83SJtCDhMjndcDMFVQ/Tj9iA1BfJzFKD9mAUXT3OenpuPHbI6P/myECxRJrofUsDx/5g==
 
-"@expo/env@^2.5.3":
-  version "2.5.3"
-  resolved "https://registry.yarnpkg.com/@expo/env/-/env-2.5.3.tgz#ce346e4a1bc3b64b863716c2656c73a53eeb9330"
-  integrity sha512-dBGu8BAfvUcXvG4HvYth+EhcHEsdC+/fT6HTH/zFvvwfp50LG6uzpzT8TXObwEq/t2B/rvAMV5OolxQ46LWXHg==
+"@expo/env@^2.5.4":
+  version "2.5.4"
+  resolved "https://registry.yarnpkg.com/@expo/env/-/env-2.5.4.tgz#0e4154afa664707e3ee80898ffa540c8c06d2c0c"
+  integrity sha512-CjzuExX8GegcNLpOw8BDO19RpzJBD1xCCMSfRL1eMfIGiwIJ9EBu0cE3jn3elk7rKvU5QqH15x72YLWTyxGL2g==
   dependencies:
     chalk "^4.0.0"
     debug "^4.3.4"
     getenv "^2.0.0"
 
-"@expo/fingerprint@0.21.6":
-  version "0.21.6"
-  resolved "https://registry.yarnpkg.com/@expo/fingerprint/-/fingerprint-0.21.6.tgz#e82adabe072553ee5d79dcbcee6db1b95de5628c"
-  integrity sha512-EKh7ak+SYwXjvX/4P7BcyeLxip2z9KAsnN/55VP10g8H1Ua4Dm/BgLAhgBcbzbsYretYmNEynAcf9oKCK9pjxA==
+"@expo/fingerprint@0.21.9":
+  version "0.21.9"
+  resolved "https://registry.yarnpkg.com/@expo/fingerprint/-/fingerprint-0.21.9.tgz#41c41c73c5099686dc4f81acce212785044db463"
+  integrity sha512-Z2xIFc/lvZZnDamAyd9uWUUctoT6uzAYOLAUqiZ2pT6mkDFistVsLd/5XCrD5/W3pUY65GLxmOal6+vyyzo0Dg==
   dependencies:
-    "@expo/env" "^2.5.3"
+    "@expo/env" "^2.5.4"
     "@expo/spawn-async" "^1.8.0"
     arg "^5.0.2"
     chalk "^4.1.2"
