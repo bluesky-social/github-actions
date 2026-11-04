@@ -7,18 +7,14 @@ import {join} from 'path'
 
 /*
  * Fingerprint sources are flagged with one or more "reasons" describing why they
- * contribute to the fingerprint. These reasons concern native autolinking - the
- * surface that determines whether an OTA update is safe or a native rebuild is
- * required. A change anywhere else (JS, assets) can ship over the air.
+ * contribute to the fingerprint. These reasons can change without making an OTA
+ * update unsafe for binaries already in the field. Every other reason counts as
+ * a native change: autolinked modules, the app config and its config plugins,
+ * files the config references (fonts, icons), patches, and custom
+ * `extraSources` reasons from the project's `fingerprint.config.js`. A reason
+ * added by a future `@expo/fingerprint` also counts until it is listed here.
  */
-const AUTOLINKING_REASONS = [
-  'bareRncliAutolinking',
-  'rncoreAutolinking',
-  'rncoreAutolinkingIos',
-  'rncoreAutolinkingAndroid',
-  'expoAutolinkingAndroid',
-  'expoAutolinkingIos',
-]
+const OTA_SAFE_REASONS = ['bareGitIgnore', 'packageJson:scripts', 'easBuild']
 
 const {readFile, rm, stat, writeFile} = promises
 
@@ -234,7 +230,7 @@ const createDiff = async () => {
   ]
 
   const includesChanges = diff.some(s =>
-    s.reasons.some(r => AUTOLINKING_REASONS.includes(r)),
+    s.reasons.some(r => !OTA_SAFE_REASONS.includes(r)),
   )
 
   if (includesChanges) {
