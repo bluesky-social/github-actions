@@ -29,6 +29,12 @@ preset is `balanced`, which hashes autolinked native modules by their `package.j
 of their files. Set `preset: 'strict'` in `fingerprint.config.js` to keep detecting native changes
 that don't come with a version bump.
 
+A changed source counts as a native change unless every one of its reasons is OTA-safe:
+`bareGitIgnore`, `packageJson:scripts` or `easBuild`. Everything else requires a native build,
+including the app config, config plugins, files the config references, the `patches` directory,
+and custom reasons on `extraSources`. To keep a file from forcing builds, remove it from the
+fingerprint with `ignorePaths`.
+
 ## Inputs
 
 ### `profile`

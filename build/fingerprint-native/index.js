@@ -36774,18 +36774,14 @@ function getOctokit(token, options, ...additionalPlugins) {
 
 /*
  * Fingerprint sources are flagged with one or more "reasons" describing why they
- * contribute to the fingerprint. These reasons concern native autolinking - the
- * surface that determines whether an OTA update is safe or a native rebuild is
- * required. A change anywhere else (JS, assets) can ship over the air.
+ * contribute to the fingerprint. These reasons can change without making an OTA
+ * update unsafe for binaries already in the field. Every other reason counts as
+ * a native change: autolinked modules, the app config and its config plugins,
+ * files the config references (fonts, icons), patches, and custom
+ * `extraSources` reasons from the project's `fingerprint.config.js`. A reason
+ * added by a future `@expo/fingerprint` also counts until it is listed here.
  */
-const AUTOLINKING_REASONS = [
-    'bareRncliAutolinking',
-    'rncoreAutolinking',
-    'rncoreAutolinkingIos',
-    'rncoreAutolinkingAndroid',
-    'expoAutolinkingAndroid',
-    'expoAutolinkingIos',
-];
+const OTA_SAFE_REASONS = ['bareGitIgnore', 'packageJson:scripts', 'easBuild'];
 const { readFile, rm: fingerprint_native_rm, stat: fingerprint_native_stat, writeFile: fingerprint_native_writeFile } = external_fs_namespaceObject.promises;
 const fingerprintWorkerPath = (0,external_path_namespaceObject.join)(__dirname, 'fingerprint.js');
 const createFingerprint = async () => {
@@ -36953,7 +36949,7 @@ const createDiff = async () => {
         ...changedSources(fingerprint_native_info.previousFingerprint, fingerprint_native_info.currentFingerprint),
         ...changedSources(fingerprint_native_info.currentFingerprint, fingerprint_native_info.previousFingerprint),
     ];
-    const includesChanges = diff.some(s => s.reasons.some(r => AUTOLINKING_REASONS.includes(r)));
+    const includesChanges = diff.some(s => s.reasons.some(r => !OTA_SAFE_REASONS.includes(r)));
     if (includesChanges) {
         setOutput('diff', diff);
         setOutput('includes-changes', 'true');

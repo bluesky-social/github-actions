@@ -191,7 +191,8 @@ test('bundled worker follows the project fingerprint preset', t => {
 
 for (const [profile, native, status, changed] of [
   ['pull-request', 'current', 0, 'true'],
-  ['production', 'baseline', 0, undefined],
+  // The fixture's app config differs between commits, which needs a native build.
+  ['production', 'baseline', 1, 'true'],
   ['production', null, 1, 'true'],
 ]) {
   test(`${profile}: native=${native}, baseline first, exactly two installs`, t => {
